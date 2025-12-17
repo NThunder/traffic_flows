@@ -1,7 +1,40 @@
 import csv
 from datetime import datetime
+import heapq
 import os
 from tqdm import tqdm
+
+class PriorityQueue:
+    def __init__(self):
+        self.heap = []
+        self.entry_finder = {}
+        self.counter = 0
+
+    def push(self, link, priority):
+        key = (link.from_node, link.to_node)
+        if key in self.entry_finder:
+            self._remove_entry(key)
+        count = self.counter
+        self.counter += 1
+        entry = [priority, count, link]
+        self.entry_finder[key] = entry
+        heapq.heappush(self.heap, entry)
+
+    def _remove_entry(self, key):
+        entry = self.entry_finder.pop(key)
+        entry[-1] = 'REMOVED'  # Mark as removed
+
+    def pop(self):
+        while self.heap:
+            priority, count, link = heapq.heappop(self.heap)
+            if link != 'REMOVED':
+                key = (link.from_node, link.to_node)
+                del self.entry_finder[key]
+                return link, priority
+        return None, None
+
+    def update(self, link, priority):
+        self.push(link, priority)  # Since push removes old if exists
 
 def convert_time(time_str):
     """Преобразование времени из GTFS формата"""
