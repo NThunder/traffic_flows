@@ -8,8 +8,8 @@ from datetime import datetime
 # Добавляем текущую директорию в путь для импорта
 sys.path.append('.')
 
-from florian import compute_sf, Link as OriginalLink, parse_gtfs as original_parse_gtfs
-from lateness_prob_florian import compute_sf_with_lateness_prob, Link as ProbLink, parse_gtfs as prob_parse_gtfs
+from algos.florian import compute_sf, Link as OriginalLink, parse_gtfs as original_parse_gtfs
+from algos.lateness_prob_florian import compute_sf_with_lateness_prob, Link as ProbLink, parse_gtfs as prob_parse_gtfs
 from utils import parse_gtfs_limited, calculate_headways
 
 
