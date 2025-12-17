@@ -3,6 +3,7 @@ import math
 import csv
 from datetime import datetime
 import os
+from tqdm import tqdm
 
 class Link:
     def __init__(self, from_node, to_node, route_id, travel_cost, headway):
@@ -76,14 +77,18 @@ def find_optimal_strategy(all_links, all_stops, destination):
     # Precompute links by ToNode
     links_by_to_node = {}
     for link in all_links:
-        if link.to_node not in links_by_to_node:
-            links_by_to_node[link.to_node] = []
-        links_by_to_node[link.to_node].append(link)
+        # Проверяем, что обе остановки существуют в all_stops
+        if link.to_node in all_stops and link.from_node in all_stops:
+            if link.to_node not in links_by_to_node:
+                links_by_to_node[link.to_node] = []
+            links_by_to_node[link.to_node].append(link)
 
     # Priority queue
     pq = PriorityQueue()
     for link in all_links:
-        pq.push(link, u[link.to_node] + link.travel_cost)
+        # Проверяем, что узел существует в all_stops
+        if link.to_node in all_stops:
+            pq.push(link, u[link.to_node] + link.travel_cost)
 
     while True:
         link, priority = pq.pop()
@@ -93,6 +98,11 @@ def find_optimal_strategy(all_links, all_stops, destination):
         a = link
         i = a.from_node
         j = a.to_node
+        
+        # Проверяем, что обе остановки существуют в all_stops
+        if i not in all_stops or j not in all_stops:
+            continue
+            
         sum_uc = u[j] + a.travel_cost
 
         if u[i] < sum_uc:
@@ -150,7 +160,9 @@ def find_optimal_strategy(all_links, all_stops, destination):
 
         if i in links_by_to_node:
             for update_link in links_by_to_node[i]:  # update_link = (pred, i)
-                pq.update(update_link, u[i] + update_link.travel_cost)
+                # Проверяем существование узлов
+                if update_link.to_node in all_stops and update_link.from_node in all_stops:
+                    pq.update(update_link, u[i] + update_link.travel_cost)
 
         if VERBOSE:
             print("Node labels:")
@@ -207,7 +219,7 @@ def convert_time(time_str):
     return "{:02d}:".format(hours_converted) + time_str[3:]
 
 # GTFS Parsing
-def parse_gtfs(directory):
+def parse_gtfs(directory, limit=10000):
     # Read files
     stops_path = os.path.join(directory, 'stops.txt')
     stop_times_path = os.path.join(directory, 'stop_times.txt')
@@ -219,7 +231,9 @@ def parse_gtfs(directory):
     all_stops = set()
     with open(stops_path, 'r') as f:
         reader = csv.DictReader(f)
-        for row in reader:
+        for i, row in enumerate(tqdm(reader, desc="Reading stops", total=min(limit, 10105))):
+            if i >= limit:
+                break
             all_stops.add(row['stop_id'])
 
     # Read routes, trips, calendar to determine active services (for Dec 17, 2025 - Wednesday)
@@ -239,7 +253,9 @@ def parse_gtfs(directory):
     active_trips = {}
     with open(trips_path, 'r') as f:
         reader = csv.DictReader(f)
-        for row in reader:
+        for i, row in enumerate(tqdm(reader, desc="Reading trips", total=min(limit, 25000))):
+            if i >= limit:
+                break
             if row['service_id'] in active_services:
                 active_trips[row['trip_id']] = row['route_id']
 
@@ -247,7 +263,9 @@ def parse_gtfs(directory):
     stop_times = {}
     with open(stop_times_path, 'r') as f:
         reader = csv.DictReader(f)
-        for row in reader:
+        for i, row in enumerate(tqdm(reader, desc="Reading stop_times", total=min(limit, 2660216))):
+            if i >= limit:
+                break
             trip_id = row['trip_id']
             if trip_id not in active_trips:
                 continue
@@ -256,7 +274,7 @@ def parse_gtfs(directory):
             stop_times[trip_id].append(row)
 
     all_links = []
-    for trip_id, times in stop_times.items():
+    for trip_id, times in tqdm(stop_times.items(), desc="Creating links"):
         times.sort(key=lambda x: int(x['stop_sequence']))
         route_id = active_trips[trip_id]
         for idx in range(len(times) - 1):
@@ -264,6 +282,11 @@ def parse_gtfs(directory):
             next_stop = times[idx + 1]
             from_node = current['stop_id']
             to_node = next_stop['stop_id']
+            
+            # Проверяем, что обе остановки присутствуют в all_stops
+            if from_node not in all_stops or to_node not in all_stops:
+                continue
+                
             # Parse times HH:MM:SS to minutes
             dep_time = datetime.strptime(convert_time(current['departure_time']), '%H:%M:%S')
             arr_time = datetime.strptime(convert_time(next_stop['arrival_time']), '%H:%M:%S')
@@ -278,7 +301,7 @@ def parse_gtfs(directory):
 
     # Calculate headways: For each route, stop, collect departure times, sort, avg diff
     departures = {}  # (route_id, stop_id) -> list of dep_times in seconds
-    for trip_id, times in stop_times.items():
+    for trip_id, times in tqdm(stop_times.items(), desc="Processing trips for headways"):
         route_id = active_trips[trip_id]
         for st in times:
             stop_id = st['stop_id']
@@ -289,7 +312,7 @@ def parse_gtfs(directory):
             seconds = dep_time.hour * 3600 + dep_time.minute * 60 + dep_time.second
             departures[key].append(seconds)
 
-    for key in departures:
+    for key in tqdm(departures.keys(), desc="Calculating headways"):
         deps = sorted(departures[key])
         if len(deps) > 1:
             diffs = [deps[i+1] - deps[i] for i in range(len(deps)-1)]
@@ -299,15 +322,16 @@ def parse_gtfs(directory):
             departures[key] = 0.0  # or infinite
 
     # Assign headways to links (headway at from_node for route)
-    for link in all_links:
+    for link in tqdm(all_links, desc="Assigning headways"):
         key = (link.route_id, link.from_node)
         link.headway = departures.get(key, 0.0)
 
     return all_links, all_stops
 
-# Usage example:
-directory = "improved-gtfs-moscow-official"
-all_links, all_stops = parse_gtfs(directory)
-od_matrix = { "100457-8017": { "100457-1002179": 1000 } }
-destination = "100457-1002179"
-result = compute_sf(all_links, all_stops, destination, od_matrix)
+# Usage example (only when running as main script):
+if __name__ == "__main__":
+    directory = "improved-gtfs-moscow-official"
+    all_links, all_stops = parse_gtfs(directory)
+    od_matrix = { "100457-8017": { "100457-1002179": 1000 } }
+    destination = "100457-1002179"
+    result = compute_sf(all_links, all_stops, destination, od_matrix)
