@@ -203,9 +203,8 @@ def compute_sf(all_links, all_stops, destination, od_matrix):
     return SFResult(ops, volumes)
 
 def convert_time(time_str):
-    if time_str.startswith("24:"):
-        return "00:" + time_str[3:]
-    return time_str
+    hours_converted = int(time_str[:2]) % 24
+    return "{:02d}:".format(hours_converted) + time_str[3:]
 
 # GTFS Parsing
 def parse_gtfs(directory):
