@@ -1,24 +1,7 @@
-import heapq
+from utils import *
 import math
-import csv
 from datetime import datetime
-import os
-from scipy import stats  # Для нормального распределения
-
-# Оригинальный Spiess-Florian (минимизация ожидаемого времени)
-class LinkOriginal:
-    def __init__(self, from_node, to_node, route_id, travel_cost, headway):
-        self.from_node = from_node
-        self.to_node = to_node
-        self.route_id = route_id
-        self.travel_cost = travel_cost
-        self.headway = headway
-
-class StrategyOriginal:
-    def __init__(self, labels, freqs, a_set):
-        self.labels = labels
-        self.freqs = freqs
-        self.a_set = a_set
+from scipy import stats 
 
 def find_optimal_strategy_original(all_links, all_stops, destination):
     u = {stop: 0.0 if stop == destination else MATH_INF for stop in all_stops}
@@ -49,21 +32,9 @@ def find_optimal_strategy_original(all_links, all_stops, destination):
         if i in links_by_to_node:
             for update_link in links_by_to_node[i]:
                 pq.update(update_link, u[i] + update_link.travel_cost)
-    return StrategyOriginal(u, f, overline_a)
+    return Strategy(u, f, overline_a)
 
 # Модифицированный (минимизация вероятности опоздания)
-class LinkModified(LinkOriginal):
-    def __init__(self, from_node, to_node, route_id, travel_cost, headway, delay_mu=0, delay_sigma=5):
-        super().__init__(from_node, to_node, route_id, travel_cost, headway)
-        self.delay_mu = delay_mu
-        self.delay_sigma = delay_sigma
-
-class StrategyModified:
-    def __init__(self, mean_var, freqs, a_set):
-        self.mean_var = mean_var
-        self.freqs = freqs
-        self.a_set = a_set
-
 def find_optimal_strategy_modified(all_links, all_stops, destination, T=60):
     mean_var = {stop: (0.0, 0.0) if stop == destination else (MATH_INF, 0.0) for stop in all_stops}
     f = {stop: 0.0 for stop in all_stops}
@@ -103,7 +74,7 @@ def find_optimal_strategy_modified(all_links, all_stops, destination, T=60):
         if i in links_by_to_node:
             for update_link in links_by_to_node[i]:
                 pq.update(update_link, -tent_r)
-    return StrategyModified(mean_var, f, overline_a)
+    return Strategy(mean_var, f, overline_a)
 
 # Общая функция assign_demand (работает для обоих)
 def assign_demand(all_links, all_stops, optimal_strategy, od_matrix, destination, is_original=True):
@@ -129,15 +100,16 @@ def assign_demand(all_links, all_stops, optimal_strategy, od_matrix, destination
         node_volumes[a.to_node] += va
     return Volumes(volumes_links, node_volumes)
 
-# Парсинг GTFS (адаптирован для modified links)
-def parse_gtfs(directory):
-    # ... (тот же код, что и раньше, но использовать LinkModified вместо Link)
-    # В конце: link = LinkModified(from_node, to_node, route_id, travel_cost, headway)
-    # Возвращает all_links, all_stops
+def parse_gtfs(directory, limit=10000):
+    stop_times, active_trips, all_stops = parse_gtfs_limited(directory, limit)
+    all_links = calculate_links(stop_times, active_trips, all_stops)
+    all_links = calculate_headways(stop_times, active_trips, all_links)
+
+    return all_links, all_stops
 
 # Сравнение
 def compare_approaches(directory, od_matrix, destination, T=60):
-    all_links, all_stops = parse_gtfs(directory)  # Assume modified links
+    all_links, all_stops = parse_gtfs_limited(directory, 1000)  # Assume modified links
     # Оригинальный
     strategy_orig = find_optimal_strategy_original(all_links, all_stops, destination)
     volumes_orig = assign_demand(all_links, all_stops, strategy_orig, od_matrix, destination, is_original=True)

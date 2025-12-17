@@ -10,7 +10,7 @@ sys.path.append('.')
 
 from florian import compute_sf, Link as OriginalLink, parse_gtfs as original_parse_gtfs
 from lateness_prob_florian import compute_sf_with_lateness_prob, Link as ProbLink, parse_gtfs as prob_parse_gtfs
-from gtfs_utils import parse_gtfs_limited, calculate_headways
+from utils import parse_gtfs_limited, calculate_headways
 
 
 def run_comparison_with_gtfs(limit=10000):

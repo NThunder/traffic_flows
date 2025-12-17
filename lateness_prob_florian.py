@@ -1,42 +1,6 @@
-from gtfs_utils import PriorityQueue, parse_gtfs_limited
+from utils import *
 import math
-import csv
-from datetime import datetime
-import os
-import numpy as np
 from scipy.stats import norm
-import random
-from tqdm import tqdm
-
-class Link:
-    def __init__(self, from_node, to_node, route_id, mean_travel_time, std_travel_time, headway):
-        self.from_node = from_node
-        self.to_node = to_node
-        self.route_id = route_id
-        self.mean_travel_time = mean_travel_time  # среднее время в пути
-        self.std_travel_time = std_travel_time    # стандартное отклонение времени в пути
-        self.headway = headway  # интервал движения
-
-class Strategy:
-    def __init__(self, labels, freqs, a_set):
-        self.labels = labels  # теперь это вероятности, а не стоимости
-        self.freqs = freqs
-        self.a_set = a_set
-
-class Volumes:
-    def __init__(self, links, nodes):
-        self.links = links
-        self.nodes = nodes
-
-class SFResult:
-    def __init__(self, strategy, volumes):
-        self.strategy = strategy
-        self.volumes = volumes
-
-ALPHA = 1.0
-INFINITE_FREQUENCY = 999999.0
-MATH_INF = float('inf')
-VERBOSE = False
 
 def calculate_lateness_probability(mean_time, std_time, arrival_deadline):
     """
@@ -72,7 +36,7 @@ def find_optimal_strategy_with_lateness_prob(all_links, all_stops, destination, 
         print("1.1 Initialization for lateness probability model")
 
     # Инициализация: вероятность прибытия вовремя из целевой остановки равна 1.0
-    u = {stop: 1.0 if stop == destination else 0.0 for stop in all_stops}
+    u = {stop: 1.0 if stop == destination else 0.0 for stop in all_stops} # теперь это вероятности, а не стоимости
     f = {stop: 0.0 for stop in all_stops}
 
     overline_a = []
@@ -225,208 +189,15 @@ def convert_time(time_str):
     return "{:02d}:".format(hours_converted) + time_str[3:]
 
 def parse_gtfs(directory, limit=10000):
-    """Парсинг GTFS данных с ограничением количества записей"""
-    # Read files
-    stops_path = os.path.join(directory, 'stops.txt')
-    stop_times_path = os.path.join(directory, 'stop_times.txt')
-    trips_path = os.path.join(directory, 'trips.txt')
-    routes_path = os.path.join(directory, 'routes.txt')
-    calendar_path = os.path.join(directory, 'calendar.txt')
-
-    # Read stops
-    all_stops = set()
-    with open(stops_path, 'r') as f:
-        reader = csv.DictReader(f)
-        for i, row in enumerate(tqdm(reader, desc="Reading stops", total=min(limit, 10105))):
-            if i >= limit:
-                break
-            all_stops.add(row['stop_id'])
-
-    # Read routes, trips, calendar to determine active services (for Dec 17, 2025 - Wednesday)
-    # Assume start_date, end_date in YYYYMMDD, wednesday=1
-    active_services = set()
-    date_str = '20251217'  # YYYYMMDD for Dec 17, 2025
-    weekday = 'wednesday'
-    with open(calendar_path, 'r') as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            start = row['start_date']
-            end = row['end_date']
-            if start <= date_str <= end and row[weekday] == '1':
-                active_services.add(row['service_id'])
-
-    # Filter trips by active services
-    active_trips = {}
-    with open(trips_path, 'r') as f:
-        reader = csv.DictReader(f)
-        for i, row in enumerate(tqdm(reader, desc="Reading trips", total=min(limit, 25000))):
-            if i >= limit:
-                break
-            if row['service_id'] in active_services:
-                active_trips[row['trip_id']] = row['route_id']
-
-    # Read stop_times, build links
-    stop_times = {}
-    with open(stop_times_path, 'r') as f:
-        reader = csv.DictReader(f)
-        for i, row in enumerate(tqdm(reader, desc="Reading stop_times", total=min(limit, 2660216))):
-            if i >= limit:
-                break
-            trip_id = row['trip_id']
-            if trip_id not in active_trips:
-                continue
-            if trip_id not in stop_times:
-                stop_times[trip_id] = []
-            stop_times[trip_id].append(row)
-
-    all_links = []
-    for trip_id, times in tqdm(stop_times.items(), desc="Creating links"):
-        times.sort(key=lambda x: int(x['stop_sequence']))
-        route_id = active_trips[trip_id]
-        for idx in range(len(times) - 1):
-            current = times[idx]
-            next_stop = times[idx + 1]
-            from_node = current['stop_id']
-            to_node = next_stop['stop_id']
-            
-            # Проверяем, что обе остановки присутствуют в all_stops
-            if from_node not in all_stops or to_node not in all_stops:
-                continue
-                
-            # Parse times HH:MM:SS to minutes
-            dep_time = datetime.strptime(convert_time(current['departure_time']), '%H:%M:%S')
-            arr_time = datetime.strptime(convert_time(next_stop['arrival_time']), '%H:%M:%S')
-            mean_travel_time = (arr_time - dep_time).total_seconds() / 60.0  # minutes
-
-            # Headway: Need to calculate per route at from_node
-            headway = 0.0  # Set actual later
-
-            # В реальной реализации нужно рассчитать std_travel_time на основе исторических данных
-            # Для примера используем фиксированное значение
-            std_travel_time = mean_travel_time * 0.2  # 20% от среднего времени
-
-            link = Link(from_node, to_node, route_id, mean_travel_time, std_travel_time, headway)
-            all_links.append(link)
-
-    # Calculate headways: For each route, stop, collect departure times, sort, avg diff
-    departures = {}  # (route_id, stop_id) -> list of dep_times in seconds
-    for trip_id, times in tqdm(stop_times.items(), desc="Processing trips for headways"):
-        route_id = active_trips[trip_id]
-        for st in times:
-            stop_id = st['stop_id']
-            key = (route_id, stop_id)
-            if key not in departures:
-                departures[key] = []
-            dep_time = datetime.strptime(convert_time(st['departure_time']), '%H:%M:%S')
-            seconds = dep_time.hour * 3600 + dep_time.minute * 60 + dep_time.second
-            departures[key].append(seconds)
-
-    for key in tqdm(departures.keys(), desc="Calculating headways"):
-        deps = sorted(departures[key])
-        if len(deps) > 1:
-            diffs = [deps[i+1] - deps[i] for i in range(len(deps)-1)]
-            avg_headway = sum(diffs) / len(diffs) / 60.0  # minutes
-            departures[key] = avg_headway
-        else:
-            departures[key] = 0.0  # or infinite
-
-    # Assign headways to links (headway at from_node for route)
-    for link in tqdm(all_links, desc="Assigning headways"):
-        key = (link.route_id, link.from_node)
-        link.headway = departures.get(key, 0.0)
+    stop_times, active_trips, all_stops = parse_gtfs_limited(directory, limit)
+    all_links = calculate_links(stop_times, active_trips, all_stops)
+    all_links = calculate_headways(stop_times, active_trips, all_links)
 
     return all_links, all_stops
-
-# Пример использования с нашими тестовыми данными
-def parse_sample_data():
-    """Парсинг наших тестовых данных"""
-    all_stops = {'A', 'B', 'C', 'D', 'E'}
-    
-    # Создаем связи на основе stop_times.csv
-    links_data = [
-        # Маршрут 1: A -> B -> C
-        ('A', 'B', '1', 10, 2, 30),   # 08:00:00 -> 08:10:00, headway 30 мин
-        ('B', 'C', '1', 15, 3, 30),   # 08:10:00 -> 08:25:00
-        ('A', 'B', '1', 10, 2, 30),   # 08:30:00 -> 08:40:00
-        ('B', 'C', '1', 15, 3, 30),   # 08:40:00 -> 08:55:00
-        
-        # Маршрут 2: B -> D
-        ('B', 'D', '2', 15, 4, 30),   # 08:05:00 -> 08:20:00
-        ('B', 'D', '2', 15, 4, 30),   # 08:35:00 -> 08:50:00
-        
-        # Маршрут 3: C -> E
-        ('C', 'E', '3', 15, 2, 30),   # 08:15:00 -> 08:30:00
-        ('C', 'E', '3', 15, 2, 30),   # 08:45:00 -> 09:00:00
-        
-        # Экспресс: A -> D
-        ('A', 'D', '4', 20, 5, 60),   # 08:00:00 -> 08:20:00
-    ]
-    
-    # Уникализируем дуги, усредняя параметры
-    unique_links = {}
-    for from_node, to_node, route_id, mean_time, std_time, headway in links_data:
-        key = (from_node, to_node, route_id)
-        if key not in unique_links:
-            unique_links[key] = {
-                'mean_time': [],
-                'std_time': [],
-                'headway': headway
-            }
-        unique_links[key]['mean_time'].append(mean_time)
-        unique_links[key]['std_time'].append(std_time)
-    
-    all_links = []
-    for (from_node, to_node, route_id), data in unique_links.items():
-        mean_time = sum(data['mean_time']) / len(data['mean_time'])
-        std_time = sum(data['std_time']) / len(data['std_time'])
-        headway = data['headway']
-        link = Link(from_node, to_node, route_id, mean_time, std_time, headway)
-        all_links.append(link)
-    
-    return all_links, all_stops
-
-# Добавим функцию для запуска сравнения двух алгоритмов
-def compare_algorithms():
-    """
-    Функция для сравнения оригинального алгоритма Флориана и модифицированного
-    """
-    print("Сравнение оригинального алгоритма Флориана и алгоритма с учетом вероятности опоздания")
-    
-    # Используем наши тестовые данные
-    all_links, all_stops = parse_sample_data()
-    
-    # Параметры для тестирования
-    destination = 'C'
-    od_matrix = {'A': {'C': 1000}}  # 1000 пассажиров из A в C
-    arrival_deadline = 25  # дедлайн в 25 минут
-    
-    # Вычисляем результаты с помощью модифицированного алгоритма
-    result_lateness_prob = compute_sf_with_lateness_prob(
-        all_links, all_stops, destination, od_matrix, arrival_deadline
-    )
-    
-    print(f"Результаты модифицированного алгоритма (вероятность опоздания):")
-    print(f"Вероятности прибытия вовремя: {result_lateness_prob.strategy.labels}")
-    print(f"Объемы на узлах: {result_lateness_prob.volumes.nodes}")
-    
-    # Теперь импортируем и используем оригинальный алгоритм для сравнения
-    import sys
-    sys.path.append('.')
-    from florian import compute_sf, Link as OriginalLink
-    
-    # Преобразуем наши данные для оригинального алгоритма
-    original_links = [
-        OriginalLink(link.from_node, link.to_node, link.route_id, link.mean_travel_time, link.headway)
-        for link in all_links
-    ]
-    
-    original_result = compute_sf(original_links, all_stops, destination, od_matrix)
-    
-    print(f"\nРезультаты оригинального алгоритма Флориана:")
-    print(f"Обобщенные затраты: {original_result.strategy.labels}")
-    print(f"Объемы на узлах: {original_result.volumes.nodes}")
-    
-    return result_lateness_prob, original_result
 
 if __name__ == "__main__":
-    compare_algorithms()
+    directory = "improved-gtfs-moscow-official"
+    all_links, all_stops = parse_gtfs(directory)
+    od_matrix = { "100457-8017": { "100457-1002179": 1000 } }
+    destination = "100457-1002179"
+    result = compute_sf_with_lateness_prob(all_links, all_stops, destination, od_matrix)

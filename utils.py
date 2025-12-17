@@ -1,7 +1,43 @@
 import csv
+from datetime import datetime
 import heapq
 import os
 from tqdm import tqdm
+
+ALPHA = 1.0
+INFINITE_FREQUENCY = 99999999999.0
+MATH_INF = float('inf')
+VERBOSE = False
+
+class Link:
+    def __init__(self, from_node, to_node, route_id, travel_cost, headway, mean_travel_time=0, std_travel_time=1, delay_mu=0, delay_sigma=5):
+        self.from_node = from_node
+        self.to_node = to_node
+        self.route_id = route_id
+        self.travel_cost = travel_cost
+        self.headway = headway
+        # for lateness_prob_florian
+        self.mean_travel_time = mean_travel_time  # среднее время в пути
+        self.std_travel_time = std_travel_time    # стандартное отклонение времени в пути
+        # for time_arrived_florian
+        self.delay_mu = delay_mu
+        self.delay_sigma = delay_sigma
+
+class Strategy:
+    def __init__(self, labels, freqs, a_set):
+        self.labels = labels
+        self.freqs = freqs
+        self.a_set = a_set
+
+class Volumes:
+    def __init__(self, links, nodes):
+        self.links = links
+        self.nodes = nodes
+
+class SFResult:
+    def __init__(self, strategy, volumes):
+        self.strategy = strategy
+        self.volumes = volumes
 
 class PriorityQueue:
     def __init__(self):
@@ -97,10 +133,40 @@ def parse_gtfs_limited(directory, limit=100):
 
     return stop_times, active_trips, all_stops
 
-def calculate_headways(stop_times, active_trips):
+def calculate_links(stop_times, active_trips, all_stops):
+    all_links = []
+    for trip_id, times in tqdm(stop_times.items(), desc="Creating links"):
+        times.sort(key=lambda x: int(x['stop_sequence']))
+        route_id = active_trips[trip_id]
+        for idx in range(len(times) - 1):
+            current = times[idx]
+            next_stop = times[idx + 1]
+            from_node = current['stop_id']
+            to_node = next_stop['stop_id']
+            
+            # Проверяем, что обе остановки присутствуют в all_stops
+            if from_node not in all_stops or to_node not in all_stops:
+                continue
+                
+            # Parse times HH:MM:SS to minutes
+            dep_time = datetime.strptime(convert_time(current['departure_time']), '%H:%M:%S')
+            arr_time = datetime.strptime(convert_time(next_stop['arrival_time']), '%H:%M:%S')
+            mean_travel_time = (arr_time - dep_time).total_seconds() / 60.0  # minutes
+
+            # Headway: Need to calculate per route at from_node
+            headway = 0.0  # Set actual later
+
+            # В реальной реализации нужно рассчитать std_travel_time на основе исторических данных
+            # Для примера используем фиксированное значение
+            std_travel_time = mean_travel_time * 0.2  # 20% от среднего времени
+
+            link = Link(from_node, to_node, route_id, mean_travel_time, std_travel_time, headway)
+            all_links.append(link)
+
+    return all_links
+
+def calculate_headways(stop_times, active_trips, all_links):
     """Расчет интервалов движения"""
-    from datetime import datetime
-    from collections import defaultdict
     
     # Calculate headways: For each route, stop, collect departure times, sort, avg diff
     departures = {}  # (route_id, stop_id) -> list of dep_times in seconds
@@ -124,4 +190,9 @@ def calculate_headways(stop_times, active_trips):
         else:
             departures[key] = 0.0  # or infinite
 
-    return departures
+    # Assign headways to links (headway at from_node for route)
+    for link in tqdm(all_links, desc="Assigning headways"):
+        key = (link.route_id, link.from_node)
+        link.headway = departures.get(key, 0.0)
+
+    return all_links

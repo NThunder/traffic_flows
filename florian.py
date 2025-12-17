@@ -1,38 +1,11 @@
-from gtfs_utils import PriorityQueue, parse_gtfs_limited
+from utils import *
 import math
 import csv
 from datetime import datetime
 import os
 from tqdm import tqdm
 
-class Link:
-    def __init__(self, from_node, to_node, route_id, travel_cost, headway):
-        self.from_node = from_node
-        self.to_node = to_node
-        self.route_id = route_id
-        self.travel_cost = travel_cost
-        self.headway = headway
-
-class Strategy:
-    def __init__(self, labels, freqs, a_set):
-        self.labels = labels
-        self.freqs = freqs
-        self.a_set = a_set
-
-class Volumes:
-    def __init__(self, links, nodes):
-        self.links = links
-        self.nodes = nodes
-
-class SFResult:
-    def __init__(self, strategy, volumes):
-        self.strategy = strategy
-        self.volumes = volumes
-
-ALPHA = 1.0
-INFINITE_FREQUENCY = 99999999999.0
-MATH_INF = float('inf')
-VERBOSE = False
+# Оригинальный Spiess-Florian (минимизация ожидаемого времени)
 
 def find_optimal_strategy(all_links, all_stops, destination):
     if VERBOSE:
@@ -182,10 +155,16 @@ def compute_sf(all_links, all_stops, destination, od_matrix):
     volumes = assign_demand(all_links, all_stops, ops, od_matrix, destination)
     return SFResult(ops, volumes)
 
-# Usage example (only when running as main script):
+def parse_gtfs(directory, limit=10000):
+    stop_times, active_trips, all_stops = parse_gtfs_limited(directory, limit)
+    all_links = calculate_links(stop_times, active_trips, all_stops)
+    all_links = calculate_headways(stop_times, active_trips, all_links)
+
+    return all_links, all_stops
+
 if __name__ == "__main__":
     directory = "improved-gtfs-moscow-official"
-    all_links, all_stops = parse_gtfs_limited(directory)
+    all_links, all_stops = parse_gtfs(directory)
     od_matrix = { "100457-8017": { "100457-1002179": 1000 } }
     destination = "100457-1002179"
     result = compute_sf(all_links, all_stops, destination, od_matrix)
