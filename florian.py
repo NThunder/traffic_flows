@@ -202,6 +202,11 @@ def compute_sf(all_links, all_stops, destination, od_matrix):
     volumes = assign_demand(all_links, all_stops, ops, od_matrix, destination)
     return SFResult(ops, volumes)
 
+def convert_time(time_str):
+    if time_str.startswith("24:"):
+        return "00:" + time_str[3:]
+    return time_str
+
 # GTFS Parsing
 def parse_gtfs(directory):
     # Read files
@@ -261,8 +266,8 @@ def parse_gtfs(directory):
             from_node = current['stop_id']
             to_node = next_stop['stop_id']
             # Parse times HH:MM:SS to minutes
-            dep_time = datetime.strptime(current['departure_time'], '%H:%M:%S')
-            arr_time = datetime.strptime(next_stop['arrival_time'], '%H:%M:%S')
+            dep_time = datetime.strptime(convert_time(current['departure_time']), '%H:%M:%S')
+            arr_time = datetime.strptime(convert_time(next_stop['arrival_time']), '%H:%M:%S')
             travel_cost = (arr_time - dep_time).total_seconds() / 60.0  # minutes
 
             # Headway: Need to calculate per route at from_node
@@ -281,7 +286,7 @@ def parse_gtfs(directory):
             key = (route_id, stop_id)
             if key not in departures:
                 departures[key] = []
-            dep_time = datetime.strptime(st['departure_time'], '%H:%M:%S')
+            dep_time = datetime.strptime(convert_time(st['departure_time']), '%H:%M:%S')
             seconds = dep_time.hour * 3600 + dep_time.minute * 60 + dep_time.second
             departures[key].append(seconds)
 
@@ -304,8 +309,8 @@ def parse_gtfs(directory):
 # od_matrix example: {'origin1': {'dest1': demand}}
 
 # Usage example:
-# directory = 'path_to_gtfs'
-# all_links, all_stops = parse_gtfs(directory)
-# od_matrix = {}  # Fill from somewhere
-# destination = 'some_stop'
-# result = compute_sf(all_links, all_stops, destination, od_matrix)
+directory = "improved-gtfs-moscow-official"
+all_links, all_stops = parse_gtfs(directory)
+od_matrix = {}  # Fill from somewhere
+destination = "Восточный вокзал"
+result = compute_sf(all_links, all_stops, destination, od_matrix)
