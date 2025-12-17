@@ -1,6 +1,6 @@
 
 from algos.florian import find_optimal_strategy, assign_demand as assign_demand_florain, parse_gtfs
-from algos.time_arrived_florian import find_optimal_strategy as  find_optimal_strategy_modified, assign_demand as assign_demand_time_arrived
+from algos.lateness_prob_florian import find_optimal_strategy as  find_optimal_strategy_modified, assign_demand as assign_demand_time_arrived
 from utils import Link
 import networkx as nx
 import matplotlib.pyplot as plt
@@ -62,7 +62,7 @@ def parse_sample_data():
         mean_time = sum(data['mean_time']) / len(data['mean_time'])
         std_time = sum(data['std_time']) / len(data['std_time'])
         headway = data['headway']
-        link = Link(from_node, to_node, route_id, mean_time, std_time, headway)
+        link = Link(from_node=from_node, to_node=to_node, route_id=route_id, travel_cost=mean_time, headway=headway, mean_travel_time=mean_time, std_travel_time=std_time)
         all_links.append(link)
     
     return all_links, all_stops
@@ -105,7 +105,7 @@ def compare_approaches(od_matrix, destination, T=60):
     plt.title("Простая транспортная сеть для тестирования алгоритмов")
     plt.axis('off')
     
-    work_dir = "/home/gbuhtuev/6sem/tf/traffic_flows/"
+    work_dir = "/mnt/c/Users/User/Documents/agl;agmlaslgm/traffic_flows/"
     filename = work_dir + visualization_dir + "/network_visualization.png"
     print(filename)
     plt.savefig(filename)

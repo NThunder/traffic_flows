@@ -2,85 +2,124 @@ from utils import *
 import math
 from scipy import stats  # Для нормального распределения в модификации
 
-def find_optimal_strategy(all_links, all_stops, destination, T=60):
-    if VERBOSE:
-        print("1.1 Initialization")
-    # mean_var: dict[stop: (mean, var)] for remaining time ~ N(mean, sqrt(var))
-    mean_var = {stop: (0.0, 0.0) if stop == destination else (MATH_INF, 0.0) for stop in all_stops} # Вместо labels: dict[stop: (mean, var)]
-    f = {stop: 0.0 for stop in all_stops}
+def find_optimal_strategy(all_links, all_stops, destination, T=60.0):
+    """
+    Модифицированная версия Spiess-Florian: максимизация вероятности прибытия вовремя (reliability).
+    
+    mean_var[i] = (mean_time, variance_time) — параметры нормального распределения 
+                  оставшегося времени от узла i до destination.
+    R_i = P(оставшееся время ≤ T) = norm.cdf(T - mean, scale=sqrt(variance))
+    """
+    # Инициализация: в destination уже на месте
+    mean_var = {}
+    freqs = {}
+    for stop in all_stops:
+        if stop == destination:
+            mean_var[stop] = (0.0, 0.0)   # mean=0, var=0 → R=1.0
+        else:
+            mean_var[stop] = (math.inf, 0.0)  # недостижим → R=0.0
+        freqs[stop] = 0.0
 
-    overline_a = []
+    attractive_set = []  # \overline{A}
 
-    # Precompute links by ToNode
-    links_by_to_node = {}
+    # Предвычисляем входящие линки по узлам (to_node → список линков, ведущих в него)
+    incoming_links = {}
     for link in all_links:
-        if link.to_node not in links_by_to_node:
-            links_by_to_node[link.to_node] = []
-        links_by_to_node[link.to_node].append(link)
+        incoming_links.setdefault(link.to_node, []).append(link)
 
-    # Priority queue: Используем -R для max (min-heap как max-heap)
+    # Приоритетная очередь: min-heap по приоритету, где приоритет = -R (чем выше R, тем раньше обрабатываем)
     pq = PriorityQueue()
-    for link in all_links:
-        # Initial priority: -P(on time) ≈ -(T - mean)/sqrt(var), но init с inf mean → low R
-        pq.push(link, MATH_INF)  # Placeholder, update later
+
+    # Добавляем в очередь все линки, которые ведут напрямую в destination
+    if destination in incoming_links:
+        for link in incoming_links[destination]:
+            i = link.from_node
+            freq = INFINITE_FREQUENCY if link.headway <= 0 else 1.0 / link.headway
+
+            # Ожидание: Uniform(0, headway) → mean = headway/2, var = (headway)^2 / 12
+            mean_wait = 0.5 / freq if freq < INFINITE_FREQUENCY else 0.0
+            var_wait = (1.0 / freq)**2 / 12.0 if freq < INFINITE_FREQUENCY else 0.0
+
+            tent_mean = mean_wait + link.travel_cost + link.delay_mu + mean_var[destination][0]
+            tent_var = var_wait + link.delay_sigma**2 + mean_var[destination][1]
+
+            tent_r = stats.norm.cdf(T - tent_mean, scale=math.sqrt(max(tent_var, 1e-8)))
+
+            # Приоритет = -R (min-heap максимизирует R)
+            pq.push(link, -tent_r)
+
+    processed_nodes = set()  # Чтобы избежать бесконечных циклов при плохой сходимости (опционально)
 
     while True:
-        link, priority = pq.pop()
-        if link is None or math.isinf(priority) or priority >= MATH_INF:
+        entry = pq.pop()
+        if entry[0] is None:
             break
+        link, priority = entry
+        current_priority_r = -priority  # Текущая оценка R через этот линк
 
-        a = link
-        i = a.from_node
-        j = a.to_node
+        i = link.from_node  # Узел, который мы пытаемся улучшить
+        j = link.to_node    # Уже известный узел
 
-        # Compute current R_i = stats.norm.cdf(T - mean_var[i][0], 0, math.sqrt(mean_var[i][1]) if var>0 else inf)
-        current_r = stats.norm.cdf(T - mean_var[i][0], scale=math.sqrt(mean_var[i][1]) if mean_var[i][1] > 0 else 0)
-
-        # Wait approx: Для Exp, но Uniform(0, headway) для var
-        freq = INFINITE_FREQUENCY if a.headway <= 0 else 1 / a.headway
-        mean_wait = 0.5 / freq if freq < INFINITE_FREQUENCY else 0
-        var_wait = (1/freq)**2 / 12 if freq < INFINITE_FREQUENCY else 0
-
-        new_mean = mean_wait + a.travel_cost + a.delay_mu + mean_var[j][0]
-        new_var = var_wait + a.delay_sigma**2 + mean_var[j][1]
-
-        # Предполагаем улучшение если new_r > current_r, но для weighted
-        # Compute tentative new_mean_var
-        if f[i] == 0:
-            tent_mean = new_mean
-            tent_var = new_var
+        # Текущая надёжность в i
+        curr_mean, curr_var = mean_var[i]
+        if curr_mean == math.inf:
+            current_r = 0.0
         else:
-            total_f = f[i] + freq
-            tent_mean = (f[i] * mean_var[i][0] + freq * new_mean) / total_f
-            # Var for mixture approx
-            tent_var = (f[i] * (mean_var[i][1] + mean_var[i][0]**2) + freq * (new_var + new_mean**2)) / total_f - tent_mean**2
+            current_r = stats.norm.cdf(T - curr_mean, scale=math.sqrt(max(curr_var, 1e-8)))
 
-        tent_r = stats.norm.cdf(T - tent_mean, scale=math.sqrt(tent_var) if tent_var > 0 else 0)
-
-        if tent_r <= current_r:  # Не улучшает reliability
+        # Если текущая R_i уже лучше или равна предлагаемой — пропускаем
+        if current_r >= current_priority_r:
             continue
 
-        # Update
-        mean_var[i] = (tent_mean, tent_var)
-        f[i] += freq
-        overline_a.append(a)
+        # Вычисляем параметры через этот линк
+        freq = INFINITE_FREQUENCY if link.headway <= 0 else 1.0 / link.headway
+        mean_wait = 0.5 / freq if freq < INFINITE_FREQUENCY else 0.0
+        var_wait = (1.0 / freq)**2 / 12.0 if freq < INFINITE_FREQUENCY else 0.0
 
-        if VERBOSE:
-            print(f"Process: a = ({i}, {j})")
-            print(f"  Updated R_i = {tent_r}")
+        new_mean_via_link = mean_wait + link.travel_cost + link.delay_mu + mean_var[j][0]
+        new_var_via_link = var_wait + link.delay_sigma**2 + mean_var[j][1]
 
-        # Update PQ: priority = -tent_r (для max)
-        if i in links_by_to_node:
-            for update_link in links_by_to_node[i]:
-                # New priority for incoming: -R_i
-                pq.update(update_link, -tent_r)
 
-        if VERBOSE:
-            print("Node mean_var:")
-            for s in all_stops:
-                print(f"{s} -> (mean, var) = {mean_var[s]}")
+        # Если это первый линк для i
+        if freqs[i] == 0.0:
+            updated_mean = new_mean_via_link
+            updated_var = new_var_via_link
+            updated_r = stats.norm.cdf(T - updated_mean, scale=math.sqrt(max(updated_var, 1e-8)))
+        else:
+            total_freq = freqs[i] + freq
+            # Взвешенное среднее для mean
+            updated_mean = (freqs[i] * mean_var[i][0] + freq * new_mean_via_link) / total_freq
+            # Аппроксимация дисперсии для смеси распределений
+            m2_old = mean_var[i][1] + mean_var[i][0]**2
+            m2_new = new_var_via_link + new_mean_via_link**2
+            updated_m2 = (freqs[i] * m2_old + freq * m2_new) / total_freq
+            updated_var = updated_m2 - updated_mean**2
+            updated_var = max(updated_var, 0.0)  # Защита от численных ошибок
+            updated_r = stats.norm.cdf(T - updated_mean, scale=math.sqrt(max(updated_var, 1e-8)))
 
-    return Strategy(mean_var, f, overline_a)
+        # Если улучшает — принимаем
+        if updated_r > current_r + 1e-6:  # Небольшой эпсилон для численной стабильности
+            mean_var[i] = (updated_mean, updated_var)
+            freqs[i] += freq
+            attractive_set.append(link)
+
+            if VERBOSE:
+                print(f"Updated node {i}: R = {updated_r:.4f}, mean = {updated_mean:.2f}, std = {math.sqrt(updated_var):.2f}")
+
+            # Обновляем приоритеты всех линков, входящих в i (т.е. те, что могут улучшить предшественников i)
+            if i in incoming_links:
+                for prev_link in incoming_links[i]:
+                    prev_from = prev_link.from_node
+                    # Пересчитываем возможную R через prev_link
+                    prev_freq = INFINITE_FREQUENCY if prev_link.headway <= 0 else 1.0 / prev_link.headway
+                    prev_mean_wait = 0.5 / prev_freq if prev_freq < INFINITE_FREQUENCY else 0.0
+                    prev_tent_mean = prev_mean_wait + prev_link.travel_cost + prev_link.delay_mu + updated_mean
+                    prev_tent_var = (1.0 / prev_freq)**2 / 12.0 + prev_link.delay_sigma**2 + updated_var
+                    prev_tent_var = max(prev_tent_var, 1e-8)
+                    prev_tent_r = stats.norm.cdf(T - prev_tent_mean, scale=math.sqrt(prev_tent_var))
+                    pq.update(prev_link, -prev_tent_r)
+
+    return Strategy(mean_var, freqs, attractive_set)
 
 def assign_demand(all_links, all_stops, optimal_strategy, od_matrix, destination):
     # Sort a_set by descending expected time (proxy)

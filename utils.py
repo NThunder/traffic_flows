@@ -10,7 +10,7 @@ MATH_INF = float('inf')
 VERBOSE = True
 
 class Link:
-    def __init__(self, from_node, to_node, route_id, travel_cost, headway, mean_travel_time=0, std_travel_time=1, delay_mu=0, delay_sigma=5):
+    def __init__(self, from_node, to_node, route_id, travel_cost, headway, mean_travel_time=0, std_travel_time=1, delay_mu=0, delay_sigma=0.5):
         self.from_node = from_node
         self.to_node = to_node
         self.route_id = route_id
