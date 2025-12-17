@@ -84,7 +84,7 @@ def find_optimal_strategy(all_links, all_stops, destination, T=60):
 
 def assign_demand(all_links, all_stops, optimal_strategy, od_matrix, destination):
     # Sort a_set by descending expected time (proxy)
-    optimal_strategy.a_set = sorted(optimal_strategy.a_set, key=lambda a: -(optimal_strategy.mean_var[a.to_node][0] + a.travel_cost))
+    optimal_strategy.a_set = sorted(optimal_strategy.a_set, key=lambda a: -(optimal_strategy.labels[a.to_node][0] + a.travel_cost))
 
     return calculate_flow_volumes(all_links, all_stops, optimal_strategy, od_matrix, destination)
 
