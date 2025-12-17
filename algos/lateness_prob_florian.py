@@ -22,7 +22,7 @@ def calculate_lateness_probability(mean_time, std_time, arrival_deadline):
     prob_on_time = norm.cdf(arrival_deadline, loc=mean_time, scale=std_time)
     return prob_on_time
 
-def find_optimal_strategy_with_lateness_prob(all_links, all_stops, destination, arrival_deadline):
+def find_optimal_strategy(all_links, all_stops, destination, arrival_deadline):
     """
     Модифицированный алгоритм Флориана, минимизирующий вероятность опоздания
     
@@ -130,7 +130,7 @@ def find_optimal_strategy_with_lateness_prob(all_links, all_stops, destination, 
 
     return Strategy(u, f, overline_a)
 
-def assign_demand_with_lateness_prob(all_links, all_stops, optimal_strategy, od_matrix, destination):
+def assign_demand(all_links, all_stops, optimal_strategy, od_matrix, destination):
     """
     Распределение спроса с использованием стратегии, основанной на вероятности опоздания
     """
@@ -140,53 +140,16 @@ def assign_demand_with_lateness_prob(all_links, all_stops, optimal_strategy, od_
         key=lambda a: -(optimal_strategy.labels[a.to_node]),  # используем вероятности, а не стоимости
         reverse=True
     )
-
-    node_volumes = {stop: 0.0 for stop in all_stops}
-    for origin in od_matrix:
-        if destination in od_matrix[origin]:
-            node_volumes[origin] += od_matrix[origin][destination]
-            node_volumes[destination] += od_matrix[origin][destination]
-    node_volumes[destination] *= -1 # Как в оригинале
-
-    # Инициализация объемов для связей
-    volumes_links = {}
-    for link in all_links:
-        if link.from_node not in volumes_links:
-            volumes_links[link.from_node] = {}
-        volumes_links[link.from_node][link.to_node] = 0.0
-
-    for a in optimal_strategy.a_set:
-        freq = INFINITE_FREQUENCY if a.headway <= 0 else 1 / a.headway
-        if optimal_strategy.freqs[a.from_node] == 0:
-            va = 0.0
-        else:
-            va = (freq / optimal_strategy.freqs[a.from_node]) * node_volumes[a.from_node]
-        if VERBOSE:
-            print(f"Assigning demand for link: ({a.from_node}, {a.to_node})")
-            print(f"  v_({a.from_node}, {a.to_node}) = {va}")
-            print(f"  V_{a.to_node} += {va}")
-        volumes_links[a.from_node][a.to_node] = va
-        node_volumes[a.to_node] += va
-
-    if VERBOSE:
-        print("Final node volumes:")
-        for k in node_volumes:
-            print(f"  V_{k} = {node_volumes[k]}")
-
-    return Volumes(volumes_links, node_volumes)
-
-def compute_sf_with_lateness_prob(all_links, all_stops, destination, od_matrix, arrival_deadline):
+    return calculate_flow_volumes(all_links, all_stops, optimal_strategy, od_matrix, destination)
+    
+    
+def compute_sf(all_links, all_stops, destination, od_matrix, arrival_deadline):
     """
     Вычисление стратегии с учетом вероятности опоздания
     """
-    ops = find_optimal_strategy_with_lateness_prob(all_links, all_stops, destination, arrival_deadline)
-    volumes = assign_demand_with_lateness_prob(all_links, all_stops, ops, od_matrix, destination)
+    ops = find_optimal_strategy(all_links, all_stops, destination, arrival_deadline)
+    volumes = assign_demand(all_links, all_stops, ops, od_matrix, destination)
     return SFResult(ops, volumes)
-
-def convert_time(time_str):
-    """Преобразование времени из GTFS формата"""
-    hours_converted = int(time_str[:2]) % 24
-    return "{:02d}:".format(hours_converted) + time_str[3:]
 
 def parse_gtfs(directory, limit=10000):
     stop_times, active_trips, all_stops = parse_gtfs_limited(directory, limit)
@@ -200,4 +163,4 @@ if __name__ == "__main__":
     all_links, all_stops = parse_gtfs(directory)
     od_matrix = { "100457-8017": { "100457-1002179": 1000 } }
     destination = "100457-1002179"
-    result = compute_sf_with_lateness_prob(all_links, all_stops, destination, od_matrix)
+    result = compute_sf(all_links, all_stops, destination, od_matrix)

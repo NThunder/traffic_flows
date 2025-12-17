@@ -196,3 +196,38 @@ def calculate_headways(stop_times, active_trips, all_links):
         link.headway = departures.get(key, 0.0)
 
     return all_links
+
+def calculate_flow_volumes(all_links, all_stops, optimal_strategy, od_matrix, destination):
+    node_volumes = {stop: 0.0 for stop in all_stops}
+    for origin in od_matrix:
+        if destination in od_matrix[origin]:
+            node_volumes[origin] += od_matrix[origin][destination]
+            node_volumes[destination] += od_matrix[origin][destination]
+    node_volumes[destination] *= -1 # Как в оригинале
+
+    # Инициализация объемов для связей
+    volumes_links = {}
+    for link in all_links:
+        if link.from_node not in volumes_links:
+            volumes_links[link.from_node] = {}
+        volumes_links[link.from_node][link.to_node] = 0.0
+
+    for a in optimal_strategy.a_set:
+        freq = INFINITE_FREQUENCY if a.headway <= 0 else 1 / a.headway
+        if optimal_strategy.freqs[a.from_node] == 0:
+            va = 0.0
+        else:
+            va = (freq / optimal_strategy.freqs[a.from_node]) * node_volumes[a.from_node]
+        if VERBOSE:
+            print(f"Assigning demand for link: ({a.from_node}, {a.to_node})")
+            print(f"  v_({a.from_node}, {a.to_node}) = {va}")
+            print(f"  V_{a.to_node} += {va}")
+        volumes_links[a.from_node][a.to_node] = va
+        node_volumes[a.to_node] += va
+
+    if VERBOSE:
+        print("Final node volumes:")
+        for k in node_volumes:
+            print(f"  V_{k} = {node_volumes[k]}")
+
+    return Volumes(volumes_links, node_volumes)
