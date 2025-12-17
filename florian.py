@@ -305,11 +305,9 @@ def parse_gtfs(directory):
 
     return all_links, all_stops
 
-# od_matrix example: {'origin1': {'dest1': demand}}
-
 # Usage example:
 directory = "improved-gtfs-moscow-official"
 all_links, all_stops = parse_gtfs(directory)
-od_matrix = {}  # Fill from somewhere
-destination = '100457-17339'
+od_matrix = { "100457-8017": { "100457-1002179": 1000 } }
+destination = "100457-1002179"
 result = compute_sf(all_links, all_stops, destination, od_matrix)
