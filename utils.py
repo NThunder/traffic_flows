@@ -7,7 +7,7 @@ from tqdm import tqdm
 ALPHA = 1.0
 INFINITE_FREQUENCY = 99999999999.0
 MATH_INF = float('inf')
-VERBOSE = False
+VERBOSE = True
 
 class Link:
     def __init__(self, from_node, to_node, route_id, travel_cost, headway, mean_travel_time=0, std_travel_time=1, delay_mu=0, delay_sigma=5):

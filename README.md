@@ -17,3 +17,8 @@ python -m pytest unit_tests/test_florian.py -v
 ```bash
 python -m pytest unit_tests/test_visualization.py -v
 ```
+
+
+```bash
+python3 -m comparisons.compare_volumes
+```
