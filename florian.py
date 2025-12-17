@@ -311,5 +311,5 @@ def parse_gtfs(directory):
 directory = "improved-gtfs-moscow-official"
 all_links, all_stops = parse_gtfs(directory)
 od_matrix = {}  # Fill from somewhere
-destination = "Восточный вокзал"
+destination = '100457-17339'
 result = compute_sf(all_links, all_stops, destination, od_matrix)
