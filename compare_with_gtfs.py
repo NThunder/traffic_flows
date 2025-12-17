@@ -3,6 +3,7 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 from tqdm import tqdm
+from datetime import datetime
 
 # Добавляем текущую директорию в путь для импорта
 sys.path.append('.')
@@ -41,7 +42,6 @@ def run_comparison_with_gtfs(limit=10000):
             from_node = current['stop_id']
             to_node = next_stop['stop_id']
             # Parse times HH:MM:SS to minutes
-            from datetime import datetime
             dep_time = datetime.strptime(convert_time(current['departure_time']), '%H:%M:%S')
             arr_time = datetime.strptime(convert_time(next_stop['arrival_time']), '%H:%M:%S')
             travel_cost = (arr_time - dep_time).total_seconds() / 60.0  # minutes

@@ -1,5 +1,4 @@
 import csv
-from datetime import datetime
 import heapq
 import os
 from tqdm import tqdm

@@ -1,4 +1,4 @@
-import heapq
+from gtfs_utils import PriorityQueue, parse_gtfs_limited
 import math
 import csv
 from datetime import datetime
@@ -37,38 +37,6 @@ ALPHA = 1.0
 INFINITE_FREQUENCY = 999999.0
 MATH_INF = float('inf')
 VERBOSE = False
-
-class PriorityQueue:
-    def __init__(self):
-        self.heap = []
-        self.entry_finder = {}
-        self.counter = 0
-
-    def push(self, link, priority):
-        key = (link.from_node, link.to_node)
-        if key in self.entry_finder:
-            self._remove_entry(key)
-        count = self.counter
-        self.counter += 1
-        entry = [priority, count, link]
-        self.entry_finder[key] = entry
-        heapq.heappush(self.heap, entry)
-
-    def _remove_entry(self, key):
-        entry = self.entry_finder.pop(key)
-        entry[-1] = 'REMOVED'  # Mark as removed
-
-    def pop(self):
-        while self.heap:
-            priority, count, link = heapq.heappop(self.heap)
-            if link != 'REMOVED':
-                key = (link.from_node, link.to_node)
-                del self.entry_finder[key]
-                return link, priority
-        return None, None
-
-    def update(self, link, priority):
-        self.push(link, priority)  # Since push removes old if exists
 
 def calculate_lateness_probability(mean_time, std_time, arrival_deadline):
     """
@@ -112,20 +80,24 @@ def find_optimal_strategy_with_lateness_prob(all_links, all_stops, destination, 
     # Precompute links by ToNode
     links_by_to_node = {}
     for link in all_links:
-        if link.to_node not in links_by_to_node:
-            links_by_to_node[link.to_node] = []
-        links_by_to_node[link.to_node].append(link)
+        # Проверяем, что обе остановки существуют в all_stops
+        if link.to_node in all_stops and link.from_node in all_stops:
+            if link.to_node not in links_by_to_node:
+                links_by_to_node[link.to_node] = []
+            links_by_to_node[link.to_node].append(link)
 
     # Priority queue
     # Вместо u[link.to_node] + link.travel_cost, мы будем использовать вероятность прибытия вовремя
     pq = PriorityQueue()
     for link in all_links:
-        # Вероятность прибытия вовремя из начальной точки дуги
-        # Это будет равно вероятности прибытия вовремя в конечную точку дуги, умноженной на вероятность пройти эту дугу вовремя
-        # Но для начальной инициализации используем упрощенный подход
-        prob = calculate_lateness_probability(link.mean_travel_time, link.std_travel_time, arrival_deadline)
-        # Мы максимизируем вероятность, поэтому используем отрицательное значение для min-heap
-        pq.push(link, -prob)
+        # Проверяем, что узел существует в all_stops
+        if link.to_node in all_stops:
+            # Вероятность прибытия вовремя из начальной точки дуги
+            # Это будет равно вероятности прибытия вовремя в конечную точку дуги, умноженной на вероятность пройти эту дугу вовремя
+            # Но для начальной инициализации используем упрощенный подход
+            prob = calculate_lateness_probability(link.mean_travel_time, link.std_travel_time, arrival_deadline)
+            # Мы максимизируем вероятность, поэтому используем отрицательное значение для min-heap
+            pq.push(link, -prob)
 
     iteration = 0
     max_iterations = 10000  # защита от бесконечного цикла
@@ -140,6 +112,10 @@ def find_optimal_strategy_with_lateness_prob(all_links, all_stops, destination, 
         a = link
         i = a.from_node  # начальная остановка дуги
         j = a.to_node    # конечная остановка дуги
+
+        # Проверяем, что обе остановки существуют в all_stops
+        if i not in all_stops or j not in all_stops:
+            continue
 
         # Рассчитываем вероятность прибытия вовремя из остановки i через дугу a
         # Это зависит от:
@@ -175,14 +151,16 @@ def find_optimal_strategy_with_lateness_prob(all_links, all_stops, destination, 
             # Обновляем приоритеты для дуг, входящих в узел i
             if i in links_by_to_node:
                 for update_link in links_by_to_node[i]:  # update_link = (pred, i)
-                    # Пересчитываем вероятность для дуги update_link
-                    waiting_mean_upd = update_link.headway / 2.0 if update_link.headway > 0 else 0
-                    waiting_std_upd = update_link.headway / math.sqrt(12) if update_link.headway > 0 else 0
-                    total_mean_upd = waiting_mean_upd + update_link.mean_travel_time
-                    total_std_upd = math.sqrt(waiting_std_upd**2 + update_link.std_travel_time**2)
-                    
-                    prob_upd = calculate_lateness_probability(total_mean_upd, total_std_upd, arrival_deadline)
-                    pq.update(update_link, -u[i] * prob_upd)  # используем новое значение u[i]
+                    # Проверяем существование узлов
+                    if update_link.to_node in all_stops and update_link.from_node in all_stops:
+                        # Пересчитываем вероятность для дуги update_link
+                        waiting_mean_upd = update_link.headway / 2.0 if update_link.headway > 0 else 0
+                        waiting_std_upd = update_link.headway / math.sqrt(12) if update_link.headway > 0 else 0
+                        total_mean_upd = waiting_mean_upd + update_link.mean_travel_time
+                        total_std_upd = math.sqrt(waiting_std_upd**2 + update_link.std_travel_time**2)
+                        
+                        prob_upd = calculate_lateness_probability(total_mean_upd, total_std_upd, arrival_deadline)
+                        pq.update(update_link, -u[i] * prob_upd)  # используем новое значение u[i]
 
         iteration += 1
 
