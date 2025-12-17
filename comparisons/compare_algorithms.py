@@ -7,8 +7,8 @@ from tqdm import tqdm
 # Добавляем текущую директорию в путь для импорта
 sys.path.append('.')
 
-from florian import compute_sf, Link as OriginalLink, find_optimal_strategy, assign_demand
-from lateness_prob_florian import compute_sf_with_lateness_prob, Link as ProbLink, parse_sample_data
+from algos.florian import compute_sf, Link as OriginalLink, find_optimal_strategy, assign_demand
+from algos.lateness_prob_florian import compute_sf_with_lateness_prob, Link as ProbLink, parse_sample_data
 
 
 def run_comparison():
