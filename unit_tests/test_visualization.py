@@ -11,10 +11,8 @@ from utils import Link
 
 
 class TestVisualization(unittest.TestCase):
-    
     def setUp(self):
-        # Создаем простую тестовую сеть для визуализации
-        self.test_links = [
+        self.links = [
             Link("A", "B", "1", 10, 15, 10, 2),
             Link("B", "C", "1", 15, 15, 15, 3),
             Link("A", "C", "2", 30, 5),
@@ -22,17 +20,15 @@ class TestVisualization(unittest.TestCase):
             Link("C", "D", "4", 10, 10, 1)
         ]
         
-        self.test_stops = {"A", "B", "C", "D"}
+        self.stops = {"A", "B", "C", "D"}
         self.od_matrix = {"A": {"D": 100}, "B": {"D": 50}}
         self.destination = "D"
         
-        # Создаем директорию для визуализаций, если она не существует
         self.visualization_dir = "unit_tests/visualizations"
         os.makedirs(self.visualization_dir, exist_ok=True)
     
     def create_simple_gtfs_data(self, temp_dir):
         """Создает простые GTFS данные для тестирования"""
-        # Создаем файлы в соответствии с sample_data
         stops_path = os.path.join(temp_dir, 'stops.txt')
         with open(stops_path, 'w', newline='') as f:
             writer = csv.writer(f)
@@ -82,86 +78,65 @@ class TestVisualization(unittest.TestCase):
     
     def test_network_visualization(self):
         """Тест визуализации простой транспортной сети"""
-        # Создаем граф
         G = nx.DiGraph()
         
-        # Добавляем узлы
-        for stop in self.test_stops:
+        for stop in self.stops:
             G.add_node(stop)
         
-        # Добавляем ребра
-        for link in self.test_links:
+        for link in self.links:
             G.add_edge(link.from_node, link.to_node, weight=link.travel_cost, route=link.route_id)
         
-        # Создаем визуализацию
         plt.figure(figsize=(10, 8))
         pos = nx.spring_layout(G)
         
-        # Рисуем узлы
         nx.draw_networkx_nodes(G, pos, node_color='lightblue', node_size=1500)
         
-        # Рисуем ребра
         nx.draw_networkx_edges(G, pos, edge_color='gray', arrows=True, arrowsize=20)
         
-        # Добавляем метки узлов
         nx.draw_networkx_labels(G, pos, font_size=12, font_weight='bold')
         
-        # Добавляем метки ребер
-        edge_labels = {(link.from_node, link.to_node): f"{link.travel_cost}min\n({link.route_id})" 
-                      for link in self.test_links}
+        edge_labels = {(link.from_node, link.to_node): f"{link.travel_cost}min\n({link.route_id})"
+                      for link in self.links}
         nx.draw_networkx_edge_labels(G, pos, edge_labels, font_size=8)
         
         plt.title("Простая транспортная сеть для тестирования алгоритмов")
         plt.axis('off')
         
-        # Сохраняем изображение в папку визуализаций
         filename = os.path.join(self.visualization_dir, "network_visualization.png")
         plt.savefig(filename)
         plt.close()
         
-        # Проверяем, что файл был создан
         self.assertTrue(os.path.exists(filename))
     
     def test_florian_algorithm_with_visualization(self):
         """Тест алгоритма Флориана с визуализацией результатов"""
-        # Создаем граф для визуализации
         G = nx.DiGraph()
         
-        # Добавляем узлы
-        for stop in self.test_stops:
+        for stop in self.stops:
             G.add_node(stop)
         
-        # Добавляем ребра
-        for link in self.test_links:
+        for link in self.links:
             G.add_edge(link.from_node, link.to_node, weight=link.travel_cost, route=link.route_id)
         
-        # Вычисляем результаты алгоритма
-        result = florian_compute_sf(self.test_links, self.test_stops, self.destination, self.od_matrix)
+        result = florian_compute_sf(self.links, self.stops, self.destination, self.od_matrix)
         
-        # Создаем визуализацию
         plt.figure(figsize=(12, 8))
-        pos = nx.spring_layout(G, seed=42)  # Для воспроизводимости
+        pos = nx.spring_layout(G, seed=42)
         
-        # Рисуем узлы
         nx.draw_networkx_nodes(G, pos, node_color='lightblue', node_size=1500)
         
-        # Выделяем целевой узел
         nx.draw_networkx_nodes(G, pos, nodelist=[self.destination], node_color='red', node_size=1500)
         
-        # Рисуем ребра
         nx.draw_networkx_edges(G, pos, edge_color='gray', arrows=True, arrowsize=20)
         
-        # Выделяем ребра, входящие в оптимальную стратегию
         strategy_edges = [(link.from_node, link.to_node) for link in result.strategy.a_set]
-        nx.draw_networkx_edges(G, pos, edgelist=strategy_edges, edge_color='green', 
+        nx.draw_networkx_edges(G, pos, edgelist=strategy_edges, edge_color='green',
                               arrows=True, arrowsize=20, width=2)
         
-        # Добавляем метки узлов
         nx.draw_networkx_labels(G, pos, font_size=12, font_weight='bold')
         
-        # Добавляем метки ребер с объемами
         edge_labels = {}
-        for link in self.test_links:
+        for link in self.links:
             volume = result.volumes.links.get(link.from_node, {}).get(link.to_node, 0)
             edge_labels[(link.from_node, link.to_node)] = f"{link.travel_cost}min\n({volume:.1f})"
         
@@ -170,55 +145,42 @@ class TestVisualization(unittest.TestCase):
         plt.title("Алгоритм Флориана - Оптимальная стратегия (зеленые ребра)")
         plt.axis('off')
         
-        # Сохраняем изображение в папку визуализаций
         filename = os.path.join(self.visualization_dir, "florian_algorithm_visualization.png")
         plt.savefig(filename)
         plt.close()
         
-        # Проверяем, что файл был создан
         self.assertTrue(os.path.exists(filename))
     
     def test_lateness_prob_algorithm_with_visualization(self):
         """Тест алгоритма с вероятностью опоздания с визуализацией результатов"""
-        # Создаем граф для визуализации
         G = nx.DiGraph()
         
-        # Добавляем узлы
-        for stop in self.test_stops:
+        for stop in self.stops:
             G.add_node(stop)
         
-        # Добавляем ребра
-        for link in self.test_links:
+        for link in self.links:
             G.add_edge(link.from_node, link.to_node, weight=link.travel_cost, route=link.route_id)
         
-        # Вычисляем результаты алгоритма
-        result = lp_compute_sf(self.test_links, self.test_stops, self.destination, 
+        result = lp_compute_sf(self.links, self.stops, self.destination,
                               self.od_matrix, arrival_deadline=50)
         
-        # Создаем визуализацию
         plt.figure(figsize=(12, 8))
-        pos = nx.spring_layout(G, seed=42)  # Для воспроизводимости
+        pos = nx.spring_layout(G, seed=42)
         
-        # Рисуем узлы
         nx.draw_networkx_nodes(G, pos, node_color='lightblue', node_size=1500)
         
-        # Выделяем целевой узел
         nx.draw_networkx_nodes(G, pos, nodelist=[self.destination], node_color='red', node_size=1500)
         
-        # Рисуем ребра
         nx.draw_networkx_edges(G, pos, edge_color='gray', arrows=True, arrowsize=20)
         
-        # Выделяем ребра, входящие в оптимальную стратегию
         strategy_edges = [(link.from_node, link.to_node) for link in result.strategy.a_set]
-        nx.draw_networkx_edges(G, pos, edgelist=strategy_edges, edge_color='orange', 
+        nx.draw_networkx_edges(G, pos, edgelist=strategy_edges, edge_color='orange',
                               arrows=True, arrowsize=20, width=2)
         
-        # Добавляем метки узлов
         nx.draw_networkx_labels(G, pos, font_size=12, font_weight='bold')
         
-        # Добавляем метки ребер с объемами
         edge_labels = {}
-        for link in self.test_links:
+        for link in self.links:
             volume = result.volumes.links.get(link.from_node, {}).get(link.to_node, 0)
             edge_labels[(link.from_node, link.to_node)] = f"{link.travel_cost}min\n({volume:.1f})"
         
@@ -227,55 +189,42 @@ class TestVisualization(unittest.TestCase):
         plt.title("Алгоритм с вероятностью опоздания - Оптимальная стратегия (оранжевые ребра)")
         plt.axis('off')
         
-        # Сохраняем изображение в папку визуализаций
         filename = os.path.join(self.visualization_dir, "lateness_prob_algorithm_visualization.png")
         plt.savefig(filename)
         plt.close()
         
-        # Проверяем, что файл был создан
         self.assertTrue(os.path.exists(filename))
     
     def test_time_arrived_algorithm_with_visualization(self):
         """Тест алгоритма с временем прибытия с визуализацией результатов"""
-        # Создаем граф для визуализации
         G = nx.DiGraph()
         
-        # Добавляем узлы
-        for stop in self.test_stops:
+        for stop in self.stops:
             G.add_node(stop)
         
-        # Добавляем ребра
-        for link in self.test_links:
+        for link in self.links:
             G.add_edge(link.from_node, link.to_node, weight=link.travel_cost, route=link.route_id)
         
-        # Вычисляем результаты алгоритма
-        result = ta_compute_sf(self.test_links, self.test_stops, self.destination, 
+        result = ta_compute_sf(self.links, self.stops, self.destination,
                               self.od_matrix, T=60)
         
-        # Создаем визуализацию
         plt.figure(figsize=(12, 8))
-        pos = nx.spring_layout(G, seed=42)  # Для воспроизводимости
+        pos = nx.spring_layout(G, seed=42)
         
-        # Рисуем узлы
         nx.draw_networkx_nodes(G, pos, node_color='lightblue', node_size=1500)
         
-        # Выделяем целевой узел
         nx.draw_networkx_nodes(G, pos, nodelist=[self.destination], node_color='red', node_size=1500)
         
-        # Рисуем ребра
         nx.draw_networkx_edges(G, pos, edge_color='gray', arrows=True, arrowsize=20)
         
-        # Выделяем ребра, входящие в оптимальную стратегию
         strategy_edges = [(link.from_node, link.to_node) for link in result.strategy.a_set]
-        nx.draw_networkx_edges(G, pos, edgelist=strategy_edges, edge_color='purple', 
+        nx.draw_networkx_edges(G, pos, edgelist=strategy_edges, edge_color='purple',
                               arrows=True, arrowsize=20, width=2)
         
-        # Добавляем метки узлов
         nx.draw_networkx_labels(G, pos, font_size=12, font_weight='bold')
         
-        # Добавляем метки ребер с объемами
         edge_labels = {}
-        for link in self.test_links:
+        for link in self.links:
             volume = result.volumes.links.get(link.from_node, {}).get(link.to_node, 0)
             edge_labels[(link.from_node, link.to_node)] = f"{link.travel_cost}min\n({volume:.1f})"
         
@@ -284,63 +233,47 @@ class TestVisualization(unittest.TestCase):
         plt.title("Алгоритм с временем прибытия - Оптимальная стратегия (фиолетовые ребра)")
         plt.axis('off')
         
-        # Сохраняем изображение в папку визуализаций
         filename = os.path.join(self.visualization_dir, "time_arrived_algorithm_visualization.png")
         plt.savefig(filename)
         plt.close()
         
-        # Проверяем, что файл был создан
         self.assertTrue(os.path.exists(filename))
     
     def test_gtfs_based_visualization(self):
         """Тест визуализации на основе GTFS данных"""
-        # Создаем временный каталог с GTFS данными
         with tempfile.TemporaryDirectory() as temp_dir:
             self.create_simple_gtfs_data(temp_dir)
             
-            # Загружаем данные
             all_links, all_stops = florian_parse_gtfs(temp_dir, limit=100)
             
-            # Создаем граф для визуализации
             G = nx.DiGraph()
             
-            # Добавляем узлы
             for stop in all_stops:
                 G.add_node(stop)
             
-            # Добавляем ребра
             for link in all_links:
                 G.add_edge(link.from_node, link.to_node, weight=link.travel_cost, route=link.route_id)
             
-            # Определяем OD-матрицу и цель
             od_matrix = {"A": {"D": 100}}
             destination = "D"
             
-            # Вычисляем результаты алгоритма
             result = florian_compute_sf(all_links, all_stops, destination, od_matrix)
             
-            # Создаем визуализацию
             plt.figure(figsize=(12, 8))
-            pos = nx.spring_layout(G, seed=42)  # Для воспроизводимости
+            pos = nx.spring_layout(G, seed=42)
             
-            # Рисуем узлы
             nx.draw_networkx_nodes(G, pos, node_color='lightblue', node_size=1500)
             
-            # Выделяем целевой узел
             nx.draw_networkx_nodes(G, pos, nodelist=[destination], node_color='red', node_size=1500)
             
-            # Рисуем ребра
             nx.draw_networkx_edges(G, pos, edge_color='gray', arrows=True, arrowsize=20)
             
-            # Выделяем ребра, входящие в оптимальную стратегию
             strategy_edges = [(link.from_node, link.to_node) for link in result.strategy.a_set]
-            nx.draw_networkx_edges(G, pos, edgelist=strategy_edges, edge_color='green', 
+            nx.draw_networkx_edges(G, pos, edgelist=strategy_edges, edge_color='green',
                                   arrows=True, arrowsize=20, width=2)
             
-            # Добавляем метки узлов
             nx.draw_networkx_labels(G, pos, font_size=12, font_weight='bold')
             
-            # Добавляем метки ребер с объемами
             edge_labels = {}
             for link in all_links:
                 volume = result.volumes.links.get(link.from_node, {}).get(link.to_node, 0)
@@ -351,12 +284,10 @@ class TestVisualization(unittest.TestCase):
             plt.title("Алгоритм Флориана на основе GTFS - Оптимальная стратегия")
             plt.axis('off')
             
-            # Сохраняем изображение в папку визуализаций
             filename = os.path.join(self.visualization_dir, "gtfs_based_visualization.png")
             plt.savefig(filename)
             plt.close()
             
-            # Проверяем, что файл был создан
             self.assertTrue(os.path.exists(filename))
 
 
