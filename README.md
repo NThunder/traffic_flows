@@ -20,5 +20,6 @@ python -m pytest unit_tests/test_visualization.py -v
 
 
 ```bash
+pip install -e .
 python3 -m comparisons.compare_volumes
 ```

@@ -3,11 +3,13 @@ from datetime import datetime
 import heapq
 import os
 from tqdm import tqdm
+import random
+random.seed(42)
 
 ALPHA = 1.0
 INFINITE_FREQUENCY = 99999999999.0
 MATH_INF = float('inf')
-VERBOSE = True
+VERBOSE = False
 
 class Link:
     def __init__(self, from_node, to_node, route_id, travel_cost, headway, mean_travel_time=0, std_travel_time=1, delay_mu=0, delay_sigma=0.5):
@@ -90,9 +92,9 @@ def parse_gtfs_limited(directory, limit=100):
     with open(stops_path, 'r') as f:
         reader = csv.DictReader(f)
         for i, row in enumerate(tqdm(reader, desc="Reading stops", total=min(limit, 10105))):
-            if i >= limit:
-                break
             all_stops.add(row['stop_id'])
+            if i == 0 or i == 1000:
+                print(row['stop_id'])
 
     # Read routes, trips, calendar to determine active services (for Dec 17, 2025 - Wednesday)
     # Assume start_date, end_date in YYYYMMDD, wednesday=1
@@ -112,8 +114,6 @@ def parse_gtfs_limited(directory, limit=100):
     with open(trips_path, 'r') as f:
         reader = csv.DictReader(f)
         for i, row in enumerate(tqdm(reader, desc="Reading trips", total=min(limit, 25000))):
-            if i >= limit:
-                break
             if row['service_id'] in active_services:
                 active_trips[row['trip_id']] = row['route_id']
 
@@ -159,8 +159,7 @@ def calculate_links(stop_times, active_trips, all_stops):
             # В реальной реализации нужно рассчитать std_travel_time на основе исторических данных
             # Для примера используем фиксированное значение
             std_travel_time = mean_travel_time * 0.2  # 20% от среднего времени
-
-            link = Link(from_node, to_node, route_id, mean_travel_time, std_travel_time, headway)
+            link = Link(from_node, to_node, route_id, mean_travel_time, headway, mean_travel_time,  std_travel_time)
             all_links.append(link)
 
     return all_links
@@ -197,6 +196,85 @@ def calculate_headways(stop_times, active_trips, all_links):
 
     return all_links
 
+from collections import defaultdict, deque
+
+def find_connected_od_pair_with_min_hops(all_links, min_hops=10, max_total_nodes=10000):
+    """
+    Находит первую пару (origin, destination), для которой кратчайший путь
+    содержит хотя бы `min_hops` рёбер (т.е. расстояние >= min_hops).
+    
+    Возвращает (origin, destination) или (None, None), если не найдено.
+    """
+    # Строим направленный граф
+    graph = defaultdict(list)
+    nodes = set()
+    for link in all_links:
+        graph[link.from_node].append(link.to_node)
+        nodes.add(link.from_node)
+        nodes.add(link.to_node)
+
+    if len(nodes) < 2:
+        return None, None
+
+    node_list = list(nodes)
+    total_checked = 0
+
+    # Перебираем origin в порядке списка (можно добавить random.shuffle для разнообразия)
+    for origin in node_list:
+        # BFS от origin с подсчётом расстояний в рёбрах
+        dist = {origin: 0}
+        queue = deque([origin])
+        
+        while queue:
+            current = queue.popleft()
+            current_dist = dist[current]
+            
+            # Если уже превысили min_hops, можно остановиться
+            if current_dist >= min_hops and current != origin:
+                return origin, current
+
+            # Ограничиваем глубину поиска разумно
+            if current_dist >= min_hops + 5:
+                continue
+
+            for neighbor in graph[current]:
+                if neighbor not in dist:
+                    dist[neighbor] = current_dist + 1
+                    queue.append(neighbor)
+
+        total_checked += 1
+        if total_checked > max_total_nodes:
+            break
+
+    return None, None
+
+
+def get_all_origins_reaching_destination(all_links, destination):
+    """
+    Строит обратный граф и находит все узлы, из которых можно добраться до destination.
+    """
+    # Строим ОБРАТНЫЙ граф: to_node -> [from_node, ...]
+    rev_graph = defaultdict(list)
+    all_nodes = set()
+    for link in all_links:
+        rev_graph[link.to_node].append(link.from_node)
+        all_nodes.add(link.from_node)
+        all_nodes.add(link.to_node)
+
+    # BFS из destination по обратному графу
+    reachable = set()
+    queue = deque([destination])
+    reachable.add(destination)
+
+    while queue:
+        current = queue.popleft()
+        for predecessor in rev_graph[current]:
+            if predecessor not in reachable:
+                reachable.add(predecessor)
+                queue.append(predecessor)
+
+    return reachable
+
 def calculate_flow_volumes(all_links, all_stops, optimal_strategy, od_matrix, destination):
     node_volumes = {stop: 0.0 for stop in all_stops}
     for origin in od_matrix:
@@ -228,6 +306,34 @@ def calculate_flow_volumes(all_links, all_stops, optimal_strategy, od_matrix, de
     if VERBOSE:
         print("Final node volumes:")
         for k in node_volumes:
-            print(f"  V_{k} = {node_volumes[k]}")
+            if node_volumes[k] != 0.0:
+                print(f"  V_{k} = {node_volumes[k]}")
 
     return Volumes(volumes_links, node_volumes)
+
+def compute_average_volume(volumes, all_links=None):
+    """
+    Вычисляет средний объём на рёбрах.
+    
+    Если all_links задан — считает по ВСЕМ рёбрам (включая нулевые).
+    Иначе — только по рёбрам с v > 0 (из volumes.links).
+    """
+    total_volume = 0.0
+    count = 0
+
+    if all_links is not None:
+        # Вариант B: по всем рёбрам в графе
+        for link in all_links:
+            v = volumes.links.get(link.from_node, {}).get(link.to_node, 0.0)
+            total_volume += v
+            count += 1
+    else:
+        # Вариант A: только по рёбрам с данными (обычно v > 0)
+        for from_node in volumes.links:
+            for to_node in volumes.links[from_node]:
+                v = volumes.links[from_node][to_node]
+                total_volume += v
+                count += 1
+
+    avg_volume = total_volume / count if count > 0 else 0.0
+    return avg_volume, total_volume, count

@@ -124,12 +124,31 @@ def parse_gtfs(directory, limit=10000):
     stop_times, active_trips, all_stops = parse_gtfs_limited(directory, limit)
     all_links = calculate_links(stop_times, active_trips, all_stops)
     all_links = calculate_headways(stop_times, active_trips, all_links)
+    
 
     return all_links, all_stops
 
 if __name__ == "__main__":
     directory = "improved-gtfs-moscow-official"
-    all_links, all_stops = parse_gtfs(directory)
-    od_matrix = { "100457-8017": { "100457-1002179": 1000 } }
-    destination = "100457-1002179"
+    all_links, all_stops = parse_gtfs(directory, 100000)
+
+    print("🔍 Ищем пару связанных остановок...")
+    origin, destination = find_connected_od_pair_with_min_hops(all_links)
+
+    if origin is None or destination is None:
+        raise ValueError("Не удалось найти ни одной пары остановок с путём между ними!")
+
+    print(f"✅ Найдена пара: origin={origin}, destination={destination}")
+
+    origins_reaching_dest = get_all_origins_reaching_destination(all_links, destination)
+
+    print(f"🎯 Найдено {len(origins_reaching_dest)} остановок, из которых можно доехать до {destination}")
+
+    od_matrix = {}
+    for origin in origins_reaching_dest:
+        if origin != destination:
+            demand = random.uniform(50.0, 500.0)
+            od_matrix[origin] = {destination: demand}
+
+    print(f"📊 OD-матрица создана: {len(od_matrix)} origin → {destination} (случайный спрос)")
     result = compute_sf(all_links, all_stops, destination, od_matrix)

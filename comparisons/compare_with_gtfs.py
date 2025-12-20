@@ -75,7 +75,7 @@ def run_comparison_with_gtfs(limit=10000):
             # Для примера используем фиксированное значение
             std_travel_time = mean_travel_time * 0.2  # 20% от среднего времени
 
-            link = ProbLink(from_node, to_node, route_id, mean_travel_time, std_travel_time, headway)
+            link = ProbLink(from_node, to_node, route_id, mean_travel_time, headway, mean_travel_time, std_travel_time)
             prob_links.append(link)
 
     # Параметры для тестирования
@@ -288,7 +288,7 @@ def run_extended_comparison_with_gtfs(limit=5000):
             # Для примера используем фиксированное значение
             std_travel_time = mean_travel_time * 0.2  # 20% от среднего времени
 
-            link = ProbLink(from_node, to_node, route_id, mean_travel_time, std_travel_time, headway)
+            link = ProbLink(from_node, to_node, route_id, mean_travel_time, headway, mean_travel_time, std_travel_time)
             prob_links.append(link)
 
     # Параметры для тестирования
