@@ -150,4 +150,4 @@ od_matrix = {
         'Downtown': 70,
     },
 }
-compare_fix_approaches(od_matrix, 'Downtown', 30)
+compare_fix_approaches(od_matrix, 'Downtown', 34)

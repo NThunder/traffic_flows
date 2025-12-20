@@ -36,7 +36,7 @@ def find_optimal_strategy(all_links, all_stops, destination, T=60.0):
             i = link.from_node
             freq = INFINITE_FREQUENCY if link.headway <= 0 else 1.0 / link.headway
 
-            # Ожидание: Uniform(0, headway) → mean = headway/2, var = (headway)^2 / 12
+            # Ожидание: Uniform[0, headway] → mean = headway/2, var = (headway)^2 / 12
             mean_wait = 0.5 / freq if freq < INFINITE_FREQUENCY else 0.0
             var_wait = (1.0 / freq)**2 / 12.0 if freq < INFINITE_FREQUENCY else 0.0
 

@@ -12,7 +12,7 @@ MATH_INF = float('inf')
 VERBOSE = False
 
 class Link:
-    def __init__(self, from_node, to_node, route_id, travel_cost, headway, mean_travel_time=0, std_travel_time=1, delay_mu=0, delay_sigma=0.5):
+    def __init__(self, from_node, to_node, route_id, travel_cost, headway, mean_travel_time=0, std_travel_time=1, delay_mu=0, delay_sigma=0):
         self.from_node = from_node
         self.to_node = to_node
         self.route_id = route_id
@@ -336,37 +336,40 @@ def visualize_volumes(all_links, all_stops, volumes_orig, volumes_mod,
 
     G = nx.DiGraph()
 
-    # Добавляем узлы
+    # Добавляем узлы и рёбра
     for stop in all_stops:
         G.add_node(stop)
-
-    # Добавляем рёбра с атрибутами
     for link in all_links:
-        G.add_edge(link.from_node, link.to_node,
-                   route=link.route_id,
-                   cost=link.travel_cost)  # travel_cost — среднее время по этому сегменту
+        G.add_edge(link.from_node, link.to_node, route=link.route_id, cost=link.travel_cost)
 
-    # Определяем origins
+    # Origins — узлы с положительным спросом к destination
     origins = set()
     for orig, dest_dict in od_matrix.items():
         if destination in dest_dict and dest_dict[destination] > 0:
             origins.add(orig)
 
-    plt.figure(figsize=(18, 13))
-    pos = nx.spring_layout(G, seed=42, k=0.9, iterations=70)
+    plt.figure(figsize=(16, 12))
+    pos = nx.spring_layout(G, seed=42, k=0.9, iterations=60)
 
     # Цвета узлов
-    node_colors = ['red' if node == destination else
-                   'limegreen' if node in origins else
-                   'lightblue' for node in G.nodes()]
+    node_colors = []
+    for node in G.nodes():
+        if node == destination:
+            node_colors.append('red')
+        elif node in origins:
+            node_colors.append('limegreen')
+        else:
+            node_colors.append('lightblue')
 
+    # Рисуем узлы
     nx.draw_networkx_nodes(G, pos,
                            node_color=node_colors,
-                           node_size=1200,
+                           node_size=1000,
                            alpha=0.9,
                            linewidths=2,
                            edgecolors='black')
 
+    # Рисуем рёбра
     nx.draw_networkx_edges(G, pos,
                            edge_color='gray',
                            arrows=True,
@@ -374,57 +377,46 @@ def visualize_volumes(all_links, all_stops, volumes_orig, volumes_mod,
                            width=2,
                            alpha=0.7)
 
-    # === Подписи узлов по группам ===
-    intermediate_nodes = [n for n in G.nodes() if n != destination and n not in origins]
+    # === Рисуем подписи узлов отдельно по группам ===
+    # 1. Промежуточные узлы (чёрный текст)
+    intermediate_nodes = [node for node in G.nodes() if node != destination and node not in origins]
     if intermediate_nodes:
         nx.draw_networkx_labels(G, pos,
-                                labels={n: n for n in intermediate_nodes},
-                                font_size=11, font_weight='bold', font_color='black')
+                                labels={node: node for node in intermediate_nodes},
+                                font_size=11,
+                                font_weight='bold',
+                                font_color='black')
 
+    # 2. Origins (белый текст на зелёном)
     if origins:
         nx.draw_networkx_labels(G, pos,
-                                labels={n: n for n in origins},
-                                font_size=11, font_weight='bold', font_color='white')
+                                labels={node: node for node in origins},
+                                font_size=11,
+                                font_weight='bold',
+                                font_color='white')
 
+    # 3. Destination (белый текст на красном)
     nx.draw_networkx_labels(G, pos,
                             labels={destination: destination},
-                            font_size=11, font_weight='bold', font_color='white')
+                            font_size=11,
+                            font_weight='bold',
+                            font_color='white')
 
-    # === Подписи рёбер: поток + маршрут + время ===
+    # Подписи рёбер — объёмы потоков
     edge_labels = {}
     for from_node in volumes_orig.links:
         for to_node in volumes_orig.links[from_node]:
             v_orig = volumes_orig.links[from_node][to_node]
             v_mod = volumes_mod.links.get(from_node, {}).get(to_node, 0.0)
-
-            # Находим объект link для получения route_id и travel_cost
-            link_obj = next((link for link in all_links 
-                             if link.from_node == from_node and link.to_node == to_node), None)
-            if link_obj:
-                route = link_obj.route_id
-                time = link_obj.travel_cost
-                route_time_str = f"{route}: {time:.0f} мин"
-            else:
-                route_time_str = "?"
-
-            # Показываем подпись только если есть поток хотя бы в одной модели
             if v_orig > 0.01 or v_mod > 0.01:
-                label_lines = []
-                if v_orig > 0.01:
-                    label_lines.append(f"orig: {v_orig:.1f}")
-                if v_mod > 0.01:
-                    label_lines.append(f"mod: {v_mod:.1f}")
-                label_lines.append(route_time_str)
-                label = "\n".join(label_lines)
+                label = f"orig: {v_orig:.1f}\nmod: {v_mod:.1f}"
                 edge_labels[(from_node, to_node)] = label
 
     nx.draw_networkx_edge_labels(G, pos,
                                  edge_labels=edge_labels,
                                  font_size=9,
-                                 font_color='darkblue',
-                                 font_weight='bold',
-                                 bbox=dict(facecolor='white', edgecolor='none', alpha=0.85, pad=4),
-                                 verticalalignment='center')
+                                 font_color='darkred',
+                                 bbox=dict(facecolor='white', edgecolor='none', alpha=0.8, pad=3))
 
     # Легенда
     legend_elements = [
@@ -439,15 +431,14 @@ def visualize_volumes(all_links, all_stops, volumes_orig, volumes_mod,
 
     # Заголовок
     plt.title(f"Сравнение пассажиропотоков: Original vs Risk-Averse модель\n"
-              f"Destination = {destination} | Deadline T = {T} мин\n"
-              f"Подписи рёбер: orig/mod потоки + маршрут: время",
+              f"Destination = {destination} | Deadline T = {T} мин",
               fontsize=15, pad=30)
 
     plt.axis('off')
     plt.tight_layout()
 
-    filename = os.path.join(visualization_dir, "network_full_info.png")
-    plt.savefig(filename, dpi=250, bbox_inches='tight')
+    filename = os.path.join(visualization_dir, "network_volumes_highlighted.png")
+    plt.savefig(filename, dpi=200, bbox_inches='tight')
     plt.close()
 
-    print(f"График с потоками, маршрутами и временем сохранён: {filename}")
+    print(f"График успешно сохранён: {filename}")
