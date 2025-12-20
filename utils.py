@@ -311,29 +311,15 @@ def calculate_flow_volumes(all_links, all_stops, optimal_strategy, od_matrix, de
 
     return Volumes(volumes_links, node_volumes)
 
-def compute_average_volume(volumes, all_links=None):
-    """
-    Вычисляет средний объём на рёбрах.
-    
-    Если all_links задан — считает по ВСЕМ рёбрам (включая нулевые).
-    Иначе — только по рёбрам с v > 0 (из volumes.links).
-    """
+def compute_average_volume(volumes):
     total_volume = 0.0
     count = 0
 
-    if all_links is not None:
-        # Вариант B: по всем рёбрам в графе
-        for link in all_links:
-            v = volumes.links.get(link.from_node, {}).get(link.to_node, 0.0)
+    for from_node in volumes.links:
+        for to_node in volumes.links[from_node]:
+            v = volumes.links[from_node][to_node]
             total_volume += v
             count += 1
-    else:
-        # Вариант A: только по рёбрам с данными (обычно v > 0)
-        for from_node in volumes.links:
-            for to_node in volumes.links[from_node]:
-                v = volumes.links[from_node][to_node]
-                total_volume += v
-                count += 1
 
     avg_volume = total_volume / count if count > 0 else 0.0
     return avg_volume, total_volume, count

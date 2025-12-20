@@ -1,6 +1,6 @@
 
 from algos.florian import find_optimal_strategy, assign_demand as assign_demand_florain, parse_gtfs
-from algos.lateness_prob_florian import find_optimal_strategy as  find_optimal_strategy_modified, assign_demand as assign_demand_time_arrived
+from algos.time_arrived_florian import find_optimal_strategy as  find_optimal_strategy_modified, assign_demand as assign_demand_time_arrived
 from utils import *
 import networkx as nx
 import matplotlib.pyplot as plt
@@ -103,51 +103,65 @@ def compare_approaches(T=60):
     
     avg_orig_A, total_orig_A, count_orig_A = compute_average_volume(volumes_orig)
     avg_mod_A, total_mod_A, count_mod_A = compute_average_volume(volumes_mod)
+    
+    print("Сравнение распределений потоков (original vs modified):")
+    for from_node in volumes_orig.links:
+        for to_node in volumes_orig.links[from_node]:
+            v_orig = volumes_orig.links[from_node][to_node]
+            v_mod = volumes_mod.links.get(from_node, {}).get(to_node, 0.0)
+            print(f"Link ({from_node} -> {to_node}): orig={v_orig}, mod={v_mod}, diff={v_mod - v_orig}")
 
     # Вывод
     print("\n📊 Средний объём на рёбрах:")
-    print(f"Original (только активные):  среднее = {avg_orig_A:.2f}, всего рёбер = {count_orig_A}")
-    print(f"Modified (только активные): среднее = {avg_mod_A:.2f}, всего рёбер = {count_mod_A}")
+    print(f"Original (только активные):  среднее = {avg_orig_A:.2f}, всего рёбер = {count_orig_A}", total_orig_A)
+    print(f"Modified (только активные): среднее = {avg_mod_A:.2f}, всего рёбер = {count_mod_A}", total_mod_A)
 
     print(f"Изменение среднего (активные): {avg_mod_A - avg_orig_A:+.2f}")
         
-    # print("Сравнение распределений потоков (original vs modified):")
-    # for from_node in volumes_orig.links:
-    #     for to_node in volumes_orig.links[from_node]:
-    #         v_orig = volumes_orig.links[from_node][to_node]
-    #         v_mod = volumes_mod.links.get(from_node, {}).get(to_node, 0.0)
-    #         print(f"Link ({from_node} -> {to_node}): orig={v_orig}, mod={v_mod}, diff={v_mod - v_orig}")
+# compare_approaches(60)
 
-    # visualization_dir = "visualization"
-    # G = nx.DiGraph()
+def compare_fix_approaches(od_matrix, destination, T=60):
+    all_links, all_stops = parse_sample_data()
+    strategy_orig = find_optimal_strategy(all_links, all_stops, destination)
+    volumes_orig = assign_demand_florain(all_links, all_stops, strategy_orig, od_matrix, destination)
+    strategy_mod = find_optimal_strategy_modified(all_links, all_stops, destination, T)
+    volumes_mod = assign_demand_time_arrived(all_links, all_stops, strategy_mod, od_matrix, destination)
+    print("Сравнение распределений потоков (original vs modified):")
+    for from_node in volumes_orig.links:
+        for to_node in volumes_orig.links[from_node]:
+            v_orig = volumes_orig.links[from_node][to_node]
+            v_mod = volumes_mod.links.get(from_node, {}).get(to_node, 0.0)
+            print(f"Link ({from_node} -> {to_node}): orig={v_orig}, mod={v_mod}, diff={v_mod - v_orig}")
+
+    visualization_dir = "visual"
+    G = nx.DiGraph()
     
-    # for stop in all_stops:
-    #     G.add_node(stop)
+    for stop in all_stops:
+        G.add_node(stop)
     
-    # for link in all_links:
-    #     G.add_edge(link.from_node, link.to_node, weight=link.travel_cost, route=link.route_id)
+    for link in all_links:
+        G.add_edge(link.from_node, link.to_node, weight=link.travel_cost, route=link.route_id)
     
-    # plt.figure(figsize=(10, 8))
-    # pos = nx.spring_layout(G)
+    plt.figure(figsize=(10, 8))
+    pos = nx.spring_layout(G)
     
-    # nx.draw_networkx_nodes(G, pos, node_color='lightblue', node_size=1500, margins=0)
+    nx.draw_networkx_nodes(G, pos, node_color='lightblue', node_size=1500, margins=0)
     
-    # nx.draw_networkx_edges(G, pos, edge_color='gray', arrows=True, arrowsize=20)
+    nx.draw_networkx_edges(G, pos, edge_color='gray', arrows=True, arrowsize=20)
     
-    # nx.draw_networkx_labels(G, pos, font_size=12, font_weight='bold')
+    nx.draw_networkx_labels(G, pos, font_size=12, font_weight='bold')
     
-    # edge_labels = {(link.from_node, link.to_node): f"{link.travel_cost}min\n({link.route_id})" 
-    #                 for link in all_links}
-    # nx.draw_networkx_edge_labels(G, pos, edge_labels, font_size=8)
+    edge_labels = {(link.from_node, link.to_node): f"{link.travel_cost}min\n({link.route_id})" 
+                    for link in all_links}
+    nx.draw_networkx_edge_labels(G, pos, edge_labels, font_size=8)
     
-    # plt.title("Простая транспортная сеть для тестирования алгоритмов")
-    # plt.axis('off')
+    plt.title("Простая транспортная сеть для тестирования алгоритмов")
+    plt.axis('off')
     
-    # work_dir = "/mnt/c/Users/User/Documents/agl;agmlaslgm/traffic_flows/"
-    # filename = work_dir + visualization_dir + "/network_visualization.png"
-    # print(filename)
-    # plt.savefig(filename)
-    # plt.close()
+    filename = visualization_dir + "/network_visualization.png"
+    print(filename)
+    plt.savefig(filename)
+    plt.close()
 
 od_matrix = {
     'Res1': {
@@ -163,4 +177,4 @@ od_matrix = {
         'Res1': 20
     }
 }
-compare_approaches(30)
+compare_fix_approaches(od_matrix, 'Downtown', 30)
