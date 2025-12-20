@@ -74,27 +74,6 @@ def find_optimal_strategy(all_links, all_stops, destination):
 
         overline_a.append(a)
 
-        # Update PQ for links pointing to i (actually, links from nodes pointing to i? Wait, links that end at i are incoming, but update outgoing from predecessors)
-        # In Go, it's linksByToNode[i] which are links ending at i, but then update entry for link.FromNode which is predecessor
-        # Wait, in Go: linksToUpdate = linksByToNode[i]  # links ending at i
-        # then for link in linksToUpdate:  # link is incoming to i
-        # then iEntries = entries[link.FromNode]  # entries for from_node of incoming, i.e. predecessor
-        # then for entry in iEntries:
-        # if entry.link.ToNode == i and entry.link.FromNode == link.FromNode:  # entry for the incoming link
-        # pq.update(entry, u[i] + link.TravelCost)  # update priority for the incoming link to u[i] + cost? No
-        # Wait, link is incoming: from pred to i, cost is link.TravelCost for pred -> i
-        # But priority for entry is u[ToNode] + TravelCost, ToNode is i, so u[i] + TravelCost? No
-        # Wait, priority = u[j] + c_a where j = ToNode, a = (i,j)? No
-        # In init: priority = u[link.ToNode] + link.TravelCost, for link (from, to), priority = u[to] + cost(from->to)
-        # But in update, when u[i] updated, which links to update? Links that depend on u[i], i.e. links where ToNode == i? No
-        # Wait, when u[i] changes, the priorities that use u[i] are for links where ToNode == i, priority = u[i] + c_a for a ending at i? No
-        # Let's see: priority for a link a = (k, i), priority = u[i] + c_a where c_a is cost from k to i
-        # Yes, so when u[i] changes, update priorities for links ending at i, i.e. incoming to i.
-        # Yes, linksToUpdate = linksByToNode[i]  # ToNode == i, incoming
-        # then for link in linksToUpdate: link = (pred, i)
-        # then entry for that link, update to new u[i] + link.TravelCost
-        # Yes.
-
         if i in links_by_to_node:
             for update_link in links_by_to_node[i]:  # update_link = (pred, i)
                 # Проверяем существование узлов

@@ -11,38 +11,43 @@ def parse_sample_data():
         'Res1', 'Res2', 'Res3',
         'Metro_North', 'Metro_Center',
         'Downtown', 'University',
-        'Mid1', 'Mid2', 'Mid3', 'Mid4'
+        'Mid1', 'Mid3', 'Mid4'
     }
 
     links_data = [
-        ('Res1', 'Metro_North', 'M1', 5, 1, 5), 
-        ('Metro_North', 'Metro_Center', 'M1', 8, 1, 5),
-        
-        ('Res2', 'Mid1', 'B1', 6, 2, 10),
-        
-        ('Res3', 'Mid2', 'B2', 5, 3, 10),
-        ('Mid2', 'University', 'B2', 10, 3, 10),
-        
-        ('Res2', 'Metro_Center', 'X1', 18, 4, 20),
-        ('Res3', 'Downtown', 'X2', 22, 5, 20),
-        
-        ('University', 'Mid3', 'U1', 4, 2, 8),
-        ('Mid3', 'Metro_Center', 'U1', 10, 2, 8),
-        
-        ('Metro_Center', 'Mid4', 'C1', 5, 2, 15),
-        ('Mid4', 'Downtown', 'C1', 6, 2, 15),
-        ('Downtown', 'University', 'C1', 7, 2, 15),
-        ('University', 'Metro_Center', 'C1', 8, 2, 15),
-        
-        ('Metro_Center', 'Downtown', 'WALK', 12, 0, 0),
-        ('University', 'Mid2', 'WALK', 4, 0, 0),
-        
+        # Надёжный метро путь: низкая variance
+        ('Res1', 'Metro_North', 'M1', 10, 2, 5),  # mean=10, std=2 (low risk)
+        ('Metro_North', 'Metro_Center', 'M1', 15, 2, 5),
+        ('Metro_Center', 'Downtown', 'M1', 10, 2, 5),
 
-        ('Res1', 'Mid1', 'B3', 8, 2, 12),
-        ('Mid1', 'Metro_Center', 'B3', 12, 2, 12),
-        
-        ('Res2', 'Downtown', 'R1', 25, 3, 30),
-        ('Downtown', 'Res2', 'R1', 25, 3, 30),
+        # Рискованный быстрый автобус: высокая variance
+        ('Res1', 'Mid1', 'B1', 8, 15, 10),  # mean=8, std=15 (high risk)
+        ('Mid1', 'Downtown', 'B1', 12, 15, 10),
+
+        # Для Res2: путь к University
+        ('Res2', 'University', 'U1', 20, 3, 8),  # moderate
+
+        # Для Res3: рискованный прямой
+        ('Res3', 'Downtown', 'X2', 15, 20, 20),  # fast mean=15, high std=20
+
+        # Надёжный альтернативный для Res3 через метро
+        ('Res3', 'Metro_Center', 'M2', 18, 2, 5),
+        # Используем существующий Metro_Center -> Downtown
+
+        # Другие линки для связности
+        ('University', 'Mid3', 'U2', 5, 2, 8),
+        ('Mid3', 'Metro_Center', 'U2', 10, 2, 8),
+
+        ('Metro_Center', 'Mid4', 'C1', 5, 10, 15),  # mixed
+        ('Mid4', 'Downtown', 'C1', 6, 10, 15),
+
+        ('Downtown', 'University', 'C2', 7, 5, 15),
+        ('University', 'Metro_Center', 'C2', 8, 5, 15),
+
+        ('Metro_Center', 'Downtown', 'WALK', 12, 0, 0),
+
+        ('Res2', 'Downtown', 'R1', 25, 10, 30),
+        ('Downtown', 'Res2', 'R1', 25, 10, 30),
     ]
 
     unique_links = {}
@@ -66,6 +71,7 @@ def parse_sample_data():
         all_links.append(link)
     
     return all_links, all_stops
+
 
 def compare_approaches(T=60):
     directory = "improved-gtfs-moscow-official"
@@ -133,48 +139,15 @@ def compare_fix_approaches(od_matrix, destination, T=60):
             v_mod = volumes_mod.links.get(from_node, {}).get(to_node, 0.0)
             print(f"Link ({from_node} -> {to_node}): orig={v_orig}, mod={v_mod}, diff={v_mod - v_orig}")
 
-    visualization_dir = "visual"
-    G = nx.DiGraph()
-    
-    for stop in all_stops:
-        G.add_node(stop)
-    
-    for link in all_links:
-        G.add_edge(link.from_node, link.to_node, weight=link.travel_cost, route=link.route_id)
-    
-    plt.figure(figsize=(10, 8))
-    pos = nx.spring_layout(G)
-    
-    nx.draw_networkx_nodes(G, pos, node_color='lightblue', node_size=1500, margins=0)
-    
-    nx.draw_networkx_edges(G, pos, edge_color='gray', arrows=True, arrowsize=20)
-    
-    nx.draw_networkx_labels(G, pos, font_size=12, font_weight='bold')
-    
-    edge_labels = {(link.from_node, link.to_node): f"{link.travel_cost}min\n({link.route_id})" 
-                    for link in all_links}
-    nx.draw_networkx_edge_labels(G, pos, edge_labels, font_size=8)
-    
-    plt.title("Простая транспортная сеть для тестирования алгоритмов")
-    plt.axis('off')
-    
-    filename = visualization_dir + "/network_visualization.png"
-    print(filename)
-    plt.savefig(filename)
-    plt.close()
+    visualize_volumes(all_links, all_stops, volumes_orig, volumes_mod, 
+                        od_matrix, destination, T)
 
 od_matrix = {
     'Res1': {
         'Downtown': 120,
     },
-    'Res2': {
-        'University': 30
-    },
     'Res3': {
         'Downtown': 70,
     },
-    'Downtown': {
-        'Res1': 20
-    }
 }
 compare_fix_approaches(od_matrix, 'Downtown', 30)
