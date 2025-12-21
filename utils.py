@@ -13,7 +13,7 @@ VERBOSE = False
 EPSILON = 1e-6
 
 class Link:
-    def __init__(self, from_node, to_node, route_id, travel_cost, headway, mean_travel_time=0):
+    def __init__(self, from_node, to_node, route_id, travel_cost, headway):
         self.from_node = from_node
         self.to_node = to_node
         self.route_id = route_id
@@ -192,7 +192,7 @@ def calculate_links(stop_times, active_trips, all_stops):
 
             headway = 0.0 # sets actual headway later
 
-            link = Link(from_node, to_node, route_id, mean_travel_time, headway, mean_travel_time)
+            link = Link(from_node, to_node, route_id, mean_travel_time, headway)
             all_links.append(link)
 
     return all_links

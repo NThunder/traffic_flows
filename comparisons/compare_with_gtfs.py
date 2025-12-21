@@ -8,8 +8,8 @@ from datetime import datetime
 # Добавляем текущую директорию в путь для импорта
 sys.path.append('.')
 
-from algos.florian import compute_sf, Link as OriginalLink, parse_gtfs as original_parse_gtfs
-from algos.time_arrived_florian import compute_sf as compute_sf_with_time_arrived, Link as ProbLink, parse_gtfs as prob_parse_gtfs
+from algos.florian import compute_sf, Link, parse_gtfs as original_parse_gtfs
+from algos.time_arrived_florian import compute_sf as compute_sf_with_time_arrived, parse_gtfs as prob_parse_gtfs
 from utils import parse_gtfs_limited, calculate_links, calculate_headways, find_shortest_route_pair
 
 
@@ -57,34 +57,8 @@ def run_comparison_with_gtfs(limit=10000):
             # Headway: Use calculated headway
             headway = departures.get((route_id, from_node), 0.0)
 
-            link = OriginalLink(from_node, to_node, route_id, travel_cost, headway)
+            link = Link(from_node, to_node, route_id, travel_cost, headway)
             original_links.append(link)
-
-    # Создаем связи для вероятностного алгоритма
-    print("Создание связей для вероятностного алгоритма...")
-    prob_links = []
-    for trip_id, times in tqdm(stop_times.items(), desc="Creating prob links"):
-        times.sort(key=lambda x: int(x['stop_sequence']))
-        route_id = active_trips[trip_id]
-        for idx in range(len(times) - 1):
-            current = times[idx]
-            next_stop = times[idx + 1]
-            from_node = current['stop_id']
-            to_node = next_stop['stop_id']
-            # Parse times HH:MM:SS to minutes
-            dep_time = datetime.strptime(convert_time(current['departure_time']), '%H:%M:%S')
-            arr_time = datetime.strptime(convert_time(next_stop['arrival_time']), '%H:%M:%S')
-            mean_travel_time = (arr_time - dep_time).total_seconds() / 60.0  # minutes
-
-            # Headway: Use calculated headway
-            headway = departures.get((route_id, from_node), 0.0)
-
-            # В реальной реализации нужно рассчитать std_travel_time на основе исторических данных
-            # Для примера используем фиксированное значение
-            std_travel_time = mean_travel_time * 0.2  # 20% от среднего времени
-
-            link = ProbLink(from_node, to_node, route_id, mean_travel_time, headway, mean_travel_time, std_travel_time)
-            prob_links.append(link)
 
     # Параметры для тестирования
     # Найдем маршрут C962 и используем его остановки
@@ -187,12 +161,11 @@ def run_comparison_with_gtfs(limit=10000):
     print(f"Тестирование на маршруте: {origin} -> {destination}")
     print(f"Количество остановок: {len(all_stops)}")
     print(f"Количество связей (original): {len(original_links)}")
-    print(f"Количество связей (prob): {len(prob_links)}")
     
     # Вычисляем результаты с помощью модифицированного алгоритма
     print("Вычисление результатов с вероятностным алгоритмом...")
     result_lateness_prob = compute_sf_with_time_arrived(
-        prob_links, all_stops, destination, od_matrix, arrival_deadline
+        original_links, all_stops, destination, od_matrix, arrival_deadline
     )
     
     print(f"\nРезультаты модифицированного алгоритма (вероятность опоздания):")
@@ -229,7 +202,6 @@ def create_comparison_visualization(original_result, prob_result, all_stops, ori
     # Для более короткого маршрута, попробуем найти маршрут с меньшим количеством остановок
     # Используем стратегию для определения остановок на маршруте
     from collections import defaultdict
-    from utils import get_all_origins_reaching_destination
     
     # Построим список остановок в порядке следования из origin в destination
     # Используем a_set (множество рёбер оптимальной стратегии) для построения маршрута
@@ -311,6 +283,8 @@ def create_comparison_visualization(original_result, prob_result, all_stops, ori
                 stops_to_show.append(stop)
                 added_stops.add(stop)
     
+    stops_to_show = path_stops_original
+
     # Преобразуем ID остановок в их названия, если доступны
     if stop_names:
         stop_labels = [stop_names.get(stop, stop) for stop in stops_to_show]
@@ -400,10 +374,10 @@ def create_comparison_visualization(original_result, prob_result, all_stops, ori
         if stop_type == "origin":
             ax.get_xticklabels()[i].set_weight('bold')
         elif stop_type == "destination":
-            ax.get_xticklabels()[i].set_style('italic')
+            ax.get_xticklabels()[i].set_style('bold')
         elif stop_type == "origin & dest":
             ax.get_xticklabels()[i].set_weight('bold')
-            ax.get_xticklabels()[i].set_style('italic')
+            ax.get_xticklabels()[i].set_style('bold')
     
     fig.legend(handles=legend_elements, loc='upper center', bbox_to_anchor=(0.5, 0.95), ncol=2)
     
@@ -481,12 +455,14 @@ def run_extended_comparison_with_gtfs(limit=5000):
     # Парсим GTFS с ограничением
     stop_times, active_trips, all_stops, stop_names, route_names = parse_gtfs_limited(directory, limit=limit)
     
+    all_links = calculate_links(stop_times, active_trips, all_stops)
+
     # Рассчитываем интервалы
-    temp_links = calculate_headways(stop_times, active_trips, [], stop_names, route_names)
+    all_links = calculate_headways(stop_times, active_trips, all_links)
     
     # Создаем словарь интервалов из модифицированных связей
     departures = {}
-    for link in temp_links:
+    for link in all_links:
         key = (link.route_id, link.from_node)
         departures[key] = link.headway
     
@@ -509,35 +485,8 @@ def run_extended_comparison_with_gtfs(limit=5000):
             # Headway: Use calculated headway
             headway = departures.get((route_id, from_node), 0.0)
 
-            link = OriginalLink(from_node, to_node, route_id, travel_cost, headway)
+            link = Link(from_node, to_node, route_id, travel_cost, headway)
             original_links.append(link)
-
-    # Создаем связи для вероятностного алгоритма
-    print("Создание связей для вероятностного алгоритма...")
-    prob_links = []
-    for trip_id, times in tqdm(stop_times.items(), desc="Creating prob links"):
-        times.sort(key=lambda x: int(x['stop_sequence']))
-        route_id = active_trips[trip_id]
-        for idx in range(len(times) - 1):
-            current = times[idx]
-            next_stop = times[idx + 1]
-            from_node = current['stop_id']
-            to_node = next_stop['stop_id']
-            # Parse times HH:MM:SS to minutes
-            dep_time = datetime.strptime(convert_time(current['departure_time']), '%H:%M:%S')
-            arr_time = datetime.strptime(convert_time(next_stop['arrival_time']), '%H:%M:%S')
-            mean_travel_time = (arr_time - dep_time).total_seconds() / 60.0  # minutes
-
-            # Headway: Use calculated headway
-            headway = departures.get((route_id, from_node), 0.0)
-
-            # В реальной реализации нужно рассчитать std_travel_time на основе исторических данных
-            # Для примера используем фиксированное значение
-            std_travel_time = mean_travel_time * 0.2  # 20% от среднего времени
-
-            link = ProbLink(from_node, to_node, route_id, mean_travel_time, headway, mean_travel_time, std_travel_time)
-            prob_links.append(link)
-    
 
     # Параметры для тестирования
     # Найдем маршрут C962 и используем его остановки
@@ -650,7 +599,7 @@ def run_extended_comparison_with_gtfs(limit=5000):
         
         # Вычисляем результаты с помощью модифицированного алгоритма
         prob_result = compute_sf_with_time_arrived(
-            prob_links, all_stops, destination, od_matrix, deadline
+            original_links, all_stops, destination, od_matrix, deadline
         )
         
         # Вычисляем результаты с помощью оригинального алгоритма
