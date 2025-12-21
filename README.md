@@ -26,5 +26,7 @@ python3 ./comparisons/compare_volumes.py
 ```
 ## Результат
 ![Сравнение](visual/network_volumes_highlighted.png )
+**Примечание: модифицированный алгоритм выбирает Res3 --> DownTown, так как это увеличивает вероятность прийти вовремя с 0.34 до 0.41**
+
 
 ### Математичеcкое описание методов в description.ipynb
