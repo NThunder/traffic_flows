@@ -128,7 +128,18 @@ def parse_gtfs_limited(directory, limit=100):
     with open(routes_path, 'r', encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for row in tqdm(reader, desc="Reading routes"):
-            route_names[row['route_id']] = row.get('route_long_name', row.get('route_short_name', row['route_id']))
+            # Формируем название маршрута: сначала краткое (номер), потом полное
+            short_name = row.get('route_short_name', '')
+            long_name = row.get('route_long_name', '')
+            
+            if short_name and long_name:
+                route_names[row['route_id']] = f"{short_name} - {long_name}"
+            elif short_name:
+                route_names[row['route_id']] = short_name
+            elif long_name:
+                route_names[row['route_id']] = long_name
+            else:
+                route_names[row['route_id']] = row['route_id']
 
     active_services = set()
     date_str = '20251217'  # Dec 17, 2025
@@ -163,7 +174,7 @@ def parse_gtfs_limited(directory, limit=100):
 
     return stop_times, active_trips, all_stops, stop_names, route_names
 
-def calculate_links(stop_times, active_trips, all_stops, stop_names=None, route_names=None):
+def calculate_links(stop_times, active_trips, all_stops):
     all_links = []
     for trip_id, times in tqdm(stop_times.items(), desc="Creating links"):
         times.sort(key=lambda x: int(x['stop_sequence']))
@@ -189,7 +200,7 @@ def calculate_links(stop_times, active_trips, all_stops, stop_names=None, route_
 
     return all_links
 
-def calculate_headways(stop_times, active_trips, all_links, stop_names=None, route_names=None):
+def calculate_headways(stop_times, active_trips, all_links):
     departures = {}  # (route_id, stop_id) -> list of dep_times in seconds
     for trip_id, times in tqdm(stop_times.items(), desc="Processing trips for headways"):
         route_id = active_trips[trip_id]
@@ -246,7 +257,11 @@ def find_shortest_route_pair(all_links, max_stops=10):
             current, dist = queue.popleft()
             
             if dist > 0 and dist <= max_stops and current != origin:
-                return origin, current
+                # Проверим, что между origin и current есть путь (а не только расстояние по BFS)
+                # Проверим, что у нас есть связный маршрут
+                path_exists = True  # Упрощаем проверку, т.к. BFS уже нашел путь
+                if path_exists:
+                    return origin, current
             
             if dist >= max_stops:
                 continue

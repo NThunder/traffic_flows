@@ -10,7 +10,7 @@ sys.path.append('.')
 
 from algos.florian import compute_sf, Link as OriginalLink, parse_gtfs as original_parse_gtfs
 from algos.time_arrived_florian import compute_sf as compute_sf_with_time_arrived, Link as ProbLink, parse_gtfs as prob_parse_gtfs
-from utils import parse_gtfs_limited, calculate_links, calculate_headways, find_connected_od_pair_with_min_hops, find_shortest_route_pair
+from utils import parse_gtfs_limited, calculate_links, calculate_headways, find_shortest_route_pair
 
 
 def run_comparison_with_gtfs(limit=10000):
@@ -26,17 +26,17 @@ def run_comparison_with_gtfs(limit=10000):
     
     # Парсим GTFS с ограничением
     stop_times, active_trips, all_stops, stop_names, route_names = parse_gtfs_limited(directory, limit=limit)
+
+    all_links = calculate_links(stop_times, active_trips, all_stops)
     
     # Рассчитываем интервалы
-    temp_links = calculate_headways(stop_times, active_trips, [], stop_names, route_names)
+    all_links = calculate_headways(stop_times, active_trips, all_links)
     
     # Создаем словарь интервалов из модифицированных связей
     departures = {}
-    for link in temp_links:
+    for link in all_links:
         key = (link.route_id, link.from_node)
         departures[key] = link.headway
-    
-    # all_links = calculate_links(stop_times, active_trips, all_stops)
     
     # Создаем связи для оригинального алгоритма
     print("Создание связей для оригинального алгоритма...")
@@ -87,19 +87,94 @@ def run_comparison_with_gtfs(limit=10000):
             prob_links.append(link)
 
     # Параметры для тестирования
-    # Используем функцию из utils для нахождения пары с коротким маршрутом (до 10 остановок)
-    origin, destination = find_shortest_route_pair(original_links, max_stops=10)
+    # Найдем маршрут C962 и используем его остановки
+    # Ищем маршрут по названию, а не по ID
+    c962_route_id = None
+    for route_id, route_name in route_names.items():
+        if 'C962' in route_name or '962' in route_name or 'с962' in route_name.lower():
+            c962_route_id = route_id
+            print(f"Найден маршрут C962 с ID: {c962_route_id}, название: {route_name}")
+            break
     
-    # Если не найдена подходящая пара, используем первую и вторую остановку
-    if origin is None or destination is None:
-        stops_list = list(all_stops)
-        if len(stops_list) < 2:
-            print("Недостаточно остановок для тестирования")
-            return None, None
-        destination = stops_list[0]
-        origin = stops_list[1] if len(stops_list) > 1 else stops_list[0]
+    c962_stops = []
+    if c962_route_id:
+        for link in original_links:
+            if link.route_id == c962_route_id:  # Ищем связи, принадлежащие найденному маршруту C962
+                if link.from_node not in c962_stops:
+                    c962_stops.append(link.from_node)
+                if link.to_node not in c962_stops:
+                    c962_stops.append(link.to_node)
+    
+    # Если маршрут C962 найден, используем его первую и последнюю остановку
+    if c962_stops:
+        # Сортируем остановки по порядку следования в маршруте
+        # Для этого нужно построить путь
+        c962_trip_ids = []
+        for trip_id, route_id in active_trips.items():
+            if route_id == c962_route_id:
+                c962_trip_ids.append(trip_id)
+        
+        if c962_trip_ids:
+            # Берем первую поездку маршрута C962 и получаем остановки в правильном порядке
+            first_trip = c962_trip_ids[0]
+            if first_trip in stop_times:
+                trip_stops = stop_times[first_trip]
+                # Сортируем по stop_sequence
+                trip_stops.sort(key=lambda x: int(x['stop_sequence']))
+                ordered_c962_stops = [stop['stop_id'] for stop in trip_stops]
+                
+                if len(ordered_c962_stops) >= 2:
+                    origin = ordered_c962_stops[0]
+                    destination = ordered_c962_stops[-1]
+                    print(f"Используем маршрут C962: {origin} -> {destination}")
+                else:
+                    # Если в маршруте менее 2 остановок, используем стандартную логику
+                    origin, destination = find_shortest_route_pair(original_links, max_stops=10)
+                    if origin is None or destination is None:
+                        stops_list = list(all_stops)
+                        if len(stops_list) < 2:
+                            print("Недостаточно остановок для тестирования")
+                            return None, None
+                        destination = stops_list[0]
+                        origin = stops_list[1] if len(stops_list) > 1 else stops_list[0]
+                    else:
+                        print(f"Найдена пара с маршрутом длиной до 10 остановок: {origin} -> {destination}")
+            else:
+                # Если не найдена поездка C962, используем стандартную логику
+                origin, destination = find_shortest_route_pair(original_links, max_stops=10)
+                if origin is None or destination is None:
+                    stops_list = list(all_stops)
+                    if len(stops_list) < 2:
+                        print("Недостаточно остановок для тестирования")
+                        return None, None
+                    destination = stops_list[0]
+                    origin = stops_list[1] if len(stops_list) > 1 else stops_list[0]
+                else:
+                    print(f"Найдена пара с маршрутом длиной до 10 остановок: {origin} -> {destination}")
+        else:
+            # Если не найдена поездка C962, используем стандартную логику
+            origin, destination = find_shortest_route_pair(original_links, max_stops=10)
+            if origin is None or destination is None:
+                stops_list = list(all_stops)
+                if len(stops_list) < 2:
+                    print("Недостаточно остановок для тестирования")
+                    return None, None
+                destination = stops_list[0]
+                origin = stops_list[1] if len(stops_list) > 1 else stops_list[0]
+            else:
+                print(f"Найдена пара с маршрутом длиной до 10 остановок: {origin} -> {destination}")
     else:
-        print(f"Найдена пара с маршрутом длиной до 10 остановок: {origin} -> {destination}")
+        # Если маршрут C962 не найден, используем стандартную логику
+        origin, destination = find_shortest_route_pair(original_links, max_stops=10)
+        if origin is None or destination is None:
+            stops_list = list(all_stops)
+            if len(stops_list) < 2:
+                print("Недостаточно остановок для тестирования")
+                return None, None
+            destination = stops_list[0]
+            origin = stops_list[1] if len(stops_list) > 1 else stops_list[0]
+        else:
+            print(f"Найдена пара с маршрутом длиной до 10 остановок: {origin} -> {destination}")
     
     # Проверяем, что origin и destination существуют в all_stops
     if origin not in all_stops:
@@ -164,58 +239,77 @@ def create_comparison_visualization(original_result, prob_result, all_stops, ori
         for link in strategy.a_set:
             graph[link.from_node].append((link.to_node, link))
         
-        # Найдем путь от origin до destination
-        visited = set()
-        path = []
+        # Найдем путь от origin до destination с помощью BFS для получения кратчайшего пути
+        from collections import deque
+        queue = deque([(origin, [origin])])
+        visited = {origin}
         
-        def dfs(current, target, current_path):
-            if current == target:
-                return current_path + [current]
+        while queue:
+            current, path = queue.popleft()
             
-            if current in visited:
-                return None
+            if current == destination:
+                return path
             
-            visited.add(current)
             for next_node, link in graph[current]:
-                result = dfs(next_node, target, current_path + [current])
-                if result:
-                    return result
-            visited.remove(current)
-            return None
+                if next_node not in visited:
+                    visited.add(next_node)
+                    queue.append((next_node, path + [next_node]))
         
-        result_path = dfs(origin, destination, [])
-        return result_path if result_path else [origin, destination]  # В крайнем случае, просто origin и destination
+        return [origin, destination] # В крайнем случае, просто origin и destination
     
-    # Получаем остановки вдоль маршрута
+    # Для построения маршрута используем стратегию, у которой больше остановок на пути или обе стратегии
     path_stops_original = get_path_stops(original_result.strategy, origin, destination)
     path_stops_prob = get_path_stops(prob_result.strategy, origin, destination)
     
-    # Используем более короткий маршрут из двух
-    if len(path_stops_original) <= len(path_stops_prob) and len(path_stops_original) <= 10:
-        stops_to_show = path_stops_original
-    elif len(path_stops_prob) <= 10:
-        stops_to_show = path_stops_prob
+    # Объединяем остановки из обоих маршрутов, сохраняя порядок
+    all_path_stops = set()
+    all_path_stops.update(path_stops_original)
+    all_path_stops.update(path_stops_prob)
+    
+    # Если объединенный маршрут слишком длинный, используем более короткий
+    if len(all_path_stops) > 10:
+        if len(path_stops_original) <= len(path_stops_prob) and len(path_stops_original) <= 10:
+            stops_to_show = path_stops_original
+        elif len(path_stops_prob) <= 10:
+            stops_to_show = path_stops_prob
+        else:
+            # Если оба маршрута длиннее 10, используем активные остановки, но ограничиваем до 10
+            active_stops = set()
+            for stop, volume in original_result.volumes.nodes.items():
+                if volume != 0:
+                    active_stops.add(stop)
+            for stop, volume in prob_result.volumes.nodes.items():
+                if volume != 0:
+                    active_stops.add(stop)
+            
+            # Включаем origin и destination
+            displayed_stops = [origin]
+            if destination != origin and len(displayed_stops) < 10:
+                displayed_stops.append(destination)
+            
+            # Добавляем остальные активные остановки
+            for stop in active_stops:
+                if stop != origin and stop != destination and len(displayed_stops) < 10:
+                    displayed_stops.append(stop)
+            
+            stops_to_show = displayed_stops
     else:
-        # Если оба маршрута длиннее 10, используем активные остановки, но ограничиваем до 10
-        active_stops = set()
-        for stop, volume in original_result.volumes.nodes.items():
-            if volume != 0:
-                active_stops.add(stop)
-        for stop, volume in prob_result.volumes.nodes.items():
-            if volume != 0:
-                active_stops.add(stop)
+        # Используем объединенный маршрут, но сохраняя логический порядок
+        # Приоритет у оригинального маршрута
+        stops_to_show = []
+        added_stops = set()
         
-        # Включаем origin и destination
-        displayed_stops = [origin]
-        if destination != origin and len(displayed_stops) < 10:
-            displayed_stops.append(destination)
+        # Сначала добавляем остановки из оригинального маршрута
+        for stop in path_stops_original:
+            if stop not in added_stops and len(stops_to_show) < 10:
+                stops_to_show.append(stop)
+                added_stops.add(stop)
         
-        # Добавляем остальные активные остановки
-        for stop in active_stops:
-            if stop != origin and stop != destination and len(displayed_stops) < 10:
-                displayed_stops.append(stop)
-        
-        stops_to_show = displayed_stops
+        # Потом добавляем оставшиеся из вероятностного маршрута
+        for stop in path_stops_prob:
+            if stop not in added_stops and len(stops_to_show) < 10:
+                stops_to_show.append(stop)
+                added_stops.add(stop)
     
     # Преобразуем ID остановок в их названия, если доступны
     if stop_names:
@@ -239,12 +333,16 @@ def create_comparison_visualization(original_result, prob_result, all_stops, ori
     fig, ax = plt.subplots(1, 1, figsize=(12, 6))
     
     # Получаем информацию о маршрутах для заголовка
-    # Ищем уникальные route_id, участвующие в пути
+    # Ищем уникальные route_id, участвующие в пути, но только для остановок, которые отображаются
     routes_used = set()
+    
     for link in original_result.strategy.a_set:
-        routes_used.add(link.route_id)
+        if link.from_node in stops_to_show and link.to_node in stops_to_show:
+            routes_used.add(link.route_id)
+    
     for link in prob_result.strategy.a_set:
-        routes_used.add(link.route_id)
+        if link.from_node in stops_to_show and link.to_node in stops_to_show:
+            routes_used.add(link.route_id)
     
     # Преобразуем route_id в русские названия маршрутов, если доступны
     if route_names:
@@ -442,19 +540,94 @@ def run_extended_comparison_with_gtfs(limit=5000):
     
 
     # Параметры для тестирования
-    # Используем функцию из utils для нахождения пары с коротким маршрутом (до 10 остановок)
-    origin, destination = find_shortest_route_pair(original_links, max_stops=10)
+    # Найдем маршрут C962 и используем его остановки
+    # Ищем маршрут по названию, а не по ID
+    c962_route_id = None
+    for route_id, route_name in route_names.items():
+        if 'C962' in route_name or '962' in route_name or 'с962' in route_name.lower():
+            c962_route_id = route_id
+            print(f"Найден маршрут C962 с ID: {c962_route_id}, название: {route_name}")
+            break
     
-    # Если не найдена подходящая пара, используем первую и вторую остановку
-    if origin is None or destination is None:
-        stops_list = list(all_stops)
-        if len(stops_list) < 2:
-            print("Недостаточно остановок для тестирования")
-            return
-        destination = stops_list[0]
-        origin = stops_list[1] if len(stops_list) > 1 else stops_list[0]
+    c962_stops = []
+    if c962_route_id:
+        for link in original_links:
+            if link.route_id == c962_route_id:  # Ищем связи, принадлежащие найденному маршруту C962
+                if link.from_node not in c962_stops:
+                    c962_stops.append(link.from_node)
+                if link.to_node not in c962_stops:
+                    c962_stops.append(link.to_node)
+    
+    # Если маршрут C962 найден, используем его первую и последнюю остановку
+    if c962_stops:
+        # Сортируем остановки по порядку следования в маршруте
+        # Для этого нужно построить путь
+        c962_trip_ids = []
+        for trip_id, route_id in active_trips.items():
+            if route_id == c962_route_id:
+                c962_trip_ids.append(trip_id)
+        
+        if c962_trip_ids:
+            # Берем первую поездку маршрута C962 и получаем остановки в правильном порядке
+            first_trip = c962_trip_ids[0]
+            if first_trip in stop_times:
+                trip_stops = stop_times[first_trip]
+                # Сортируем по stop_sequence
+                trip_stops.sort(key=lambda x: int(x['stop_sequence']))
+                ordered_c962_stops = [stop['stop_id'] for stop in trip_stops]
+                
+                if len(ordered_c962_stops) >= 2:
+                    origin = ordered_c962_stops[0]
+                    destination = ordered_c962_stops[-1]
+                    print(f"Используем маршрут C962: {origin} -> {destination}")
+                else:
+                    # Если в маршруте менее 2 остановок, используем стандартную логику
+                    origin, destination = find_shortest_route_pair(original_links, max_stops=10)
+                    if origin is None or destination is None:
+                        stops_list = list(all_stops)
+                        if len(stops_list) < 2:
+                            print("Недостаточно остановок для тестирования")
+                            return
+                        destination = stops_list[0]
+                        origin = stops_list[1] if len(stops_list) > 1 else stops_list[0]
+                    else:
+                        print(f"Найдена пара с маршрутом длиной до 10 остановок: {origin} -> {destination}")
+            else:
+                # Если не найдена поездка C962, используем стандартную логику
+                origin, destination = find_shortest_route_pair(original_links, max_stops=10)
+                if origin is None or destination is None:
+                    stops_list = list(all_stops)
+                    if len(stops_list) < 2:
+                        print("Недостаточно остановок для тестирования")
+                        return
+                    destination = stops_list[0]
+                    origin = stops_list[1] if len(stops_list) > 1 else stops_list[0]
+                else:
+                    print(f"Найдена пара с маршрутом длиной до 10 остановок: {origin} -> {destination}")
+        else:
+            # Если не найдена поездка C962, используем стандартную логику
+            origin, destination = find_shortest_route_pair(original_links, max_stops=10)
+            if origin is None or destination is None:
+                stops_list = list(all_stops)
+                if len(stops_list) < 2:
+                    print("Недостаточно остановок для тестирования")
+                    return
+                destination = stops_list[0]
+                origin = stops_list[1] if len(stops_list) > 1 else stops_list[0]
+            else:
+                print(f"Найдена пара с маршрутом длиной до 10 остановок: {origin} -> {destination}")
     else:
-        print(f"Найдена пара с маршрутом длиной до 10 остановок: {origin} -> {destination}")
+        # Если маршрут C962 не найден, используем стандартную логику
+        origin, destination = find_shortest_route_pair(original_links, max_stops=10)
+        if origin is None or destination is None:
+            stops_list = list(all_stops)
+            if len(stops_list) < 2:
+                print("Недостаточно остановок для тестирования")
+                return
+            destination = stops_list[0]
+            origin = stops_list[1] if len(stops_list) > 1 else stops_list[0]
+        else:
+            print(f"Найдена пара с маршрутом длиной до 10 остановок: {origin} -> {destination}")
     
     # Проверяем, что origin и destination существуют в all_stops
     if origin not in all_stops:
