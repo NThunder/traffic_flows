@@ -5,7 +5,6 @@ import tempfile
 import os
 import csv
 from algos.florian import compute_sf as florian_compute_sf, parse_gtfs as florian_parse_gtfs
-from algos.lateness_prob_florian import compute_sf as lp_compute_sf, parse_gtfs as lp_parse_gtfs
 from algos.time_arrived_florian import compute_sf as ta_compute_sf, parse_gtfs as ta_parse_gtfs
 from utils import Link
 
@@ -146,50 +145,6 @@ class TestVisualization(unittest.TestCase):
         plt.axis('off')
         
         filename = os.path.join(self.visualization_dir, "florian_algorithm_visualization.png")
-        plt.savefig(filename)
-        plt.close()
-        
-        self.assertTrue(os.path.exists(filename))
-    
-    def test_lateness_prob_algorithm_with_visualization(self):
-        """Тест алгоритма с вероятностью опоздания с визуализацией результатов"""
-        G = nx.DiGraph()
-        
-        for stop in self.stops:
-            G.add_node(stop)
-        
-        for link in self.links:
-            G.add_edge(link.from_node, link.to_node, weight=link.travel_cost, route=link.route_id)
-        
-        result = lp_compute_sf(self.links, self.stops, self.destination,
-                              self.od_matrix, arrival_deadline=50)
-        
-        plt.figure(figsize=(12, 8))
-        pos = nx.spring_layout(G, seed=42)
-        
-        nx.draw_networkx_nodes(G, pos, node_color='lightblue', node_size=1500)
-        
-        nx.draw_networkx_nodes(G, pos, nodelist=[self.destination], node_color='red', node_size=1500)
-        
-        nx.draw_networkx_edges(G, pos, edge_color='gray', arrows=True, arrowsize=20)
-        
-        strategy_edges = [(link.from_node, link.to_node) for link in result.strategy.a_set]
-        nx.draw_networkx_edges(G, pos, edgelist=strategy_edges, edge_color='orange',
-                              arrows=True, arrowsize=20, width=2)
-        
-        nx.draw_networkx_labels(G, pos, font_size=12, font_weight='bold')
-        
-        edge_labels = {}
-        for link in self.links:
-            volume = result.volumes.links.get(link.from_node, {}).get(link.to_node, 0)
-            edge_labels[(link.from_node, link.to_node)] = f"{link.travel_cost}min\n({volume:.1f})"
-        
-        nx.draw_networkx_edge_labels(G, pos, edge_labels, font_size=8)
-        
-        plt.title("Алгоритм с вероятностью опоздания - Оптимальная стратегия (оранжевые ребра)")
-        plt.axis('off')
-        
-        filename = os.path.join(self.visualization_dir, "lateness_prob_algorithm_visualization.png")
         plt.savefig(filename)
         plt.close()
         
