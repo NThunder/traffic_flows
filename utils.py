@@ -387,10 +387,14 @@ def visualize_volumes(all_links, all_stops, volumes_orig, volumes_mod,
 
     G = nx.DiGraph()
 
-    for stop in all_stops:
-        G.add_node(stop)
+    link_attributes = {}
     for link in all_links:
-        G.add_edge(link.from_node, link.to_node, route=link.route_id, cost=link.travel_cost)
+        G.add_edge(link.from_node, link.to_node)
+        link_attributes[(link.from_node, link.to_node)] = {
+            'headway': link.headway,
+            'travel_cost': link.travel_cost,
+            'route_id': link.route_id
+        }
 
     origins = set()
     for orig, dest_dict in od_matrix.items():
@@ -423,7 +427,6 @@ def visualize_volumes(all_links, all_stops, volumes_orig, volumes_mod,
                            width=2,
                            alpha=0.7)
 
-
     intermediate_nodes = [node for node in G.nodes() if node != destination and node not in origins]
     if intermediate_nodes:
         nx.draw_networkx_labels(G, pos,
@@ -445,20 +448,43 @@ def visualize_volumes(all_links, all_stops, volumes_orig, volumes_mod,
                             font_weight='bold',
                             font_color='white')
 
-    edge_labels = {}
+    edge_labels_volumes = {}
     for from_node in volumes_orig.links:
         for to_node in volumes_orig.links[from_node]:
             v_orig = volumes_orig.links[from_node][to_node]
             v_mod = volumes_mod.links.get(from_node, {}).get(to_node, 0.0)
             if v_orig > 0.01 or v_mod > 0.01:
-                label = f"orig: {v_orig:.1f}\nmod: {v_mod:.1f}"
-                edge_labels[(from_node, to_node)] = label
+                edge_labels_volumes[(from_node, to_node)] = f"orig: {v_orig:.1f}\nmod: {v_mod:.1f}"
+
+    edge_labels_attributes = {}
+    for (from_node, to_node) in G.edges():
+        if (from_node, to_node) in link_attributes:
+            attrs = link_attributes[(from_node, to_node)]
+            headway = attrs['headway']
+            travel_cost = attrs['travel_cost']
+            
+            if headway < 0:
+                headway_str = "Inf"
+            else:
+                headway_str = f"{headway:.1f}"
+            
+            edge_labels_attributes[(from_node, to_node)] = f"h: {headway_str}\nt: {travel_cost:.1f}m"
 
     nx.draw_networkx_edge_labels(G, pos,
-                                 edge_labels=edge_labels,
+                                 edge_labels=edge_labels_volumes,
                                  font_size=9,
                                  font_color='darkred',
                                  bbox=dict(facecolor='white', edgecolor='none', alpha=0.8, pad=3))
+
+    pos_offset = {}
+    for node, (x, y) in pos.items():
+        pos_offset[node] = (x - 0.08, y - 0.08)
+
+    nx.draw_networkx_edge_labels(G, pos_offset,
+                                 edge_labels=edge_labels_attributes,
+                                 font_size=7,
+                                 font_color='darkblue',
+                                 bbox=dict(facecolor='lightyellow', edgecolor='none', alpha=0.7, pad=2))
 
     legend_elements = [
         Line2D([0], [0], marker='o', color='w', label='Пункт назначения',
@@ -470,9 +496,10 @@ def visualize_volumes(all_links, all_stops, volumes_orig, volumes_mod,
     ]
     plt.legend(handles=legend_elements, loc='upper left', fontsize=12, framealpha=0.9)
 
-    plt.title(f"Сравнение пассажиропотоков: Original vs Risk-Averse модель\n"
-              f"Destination = {destination} | Deadline T = {T} мин",
-              fontsize=15, pad=30)
+    plt.title(f"Сравнение пассажиропотоков: Original vs Modified модель\n"
+              f"Destination = {destination} | Deadline T = {T} мин\n"
+              f"Красные подписи: объёмы потоков | Синие подписи: h=headway, t=travel_time (мин)",
+              fontsize=12, pad=30)
 
     plt.axis('off')
     plt.tight_layout()
