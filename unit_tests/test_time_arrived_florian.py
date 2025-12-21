@@ -8,8 +8,8 @@ class Test_TimeArrivedFlorian_NetThreeStopsTwoLinks(unittest.TestCase):
     def setUp(self):
         # A -> B -> C
         self.links = [ # travel_cost here is optional
-            Link("A", "B", "1", travel_cost=10, headway=15, mean_travel_time=10, std_travel_time=2, delay_mu=0, delay_sigma=0.5),
-            Link("B", "C", "1", travel_cost=15, headway= 3, mean_travel_time=15, std_travel_time=5)
+            Link("A", "B", "1", travel_cost=10, headway=15, mean_travel_time=10),
+            Link("B", "C", "1", travel_cost=15, headway= 3, mean_travel_time=15)
         ]
         
         self.stops = {"A", "B", "C"}
@@ -49,10 +49,10 @@ class Test_TimeArrivedFlorian_NetFourStopsFourLinks(unittest.TestCase):
     def setUp(self):
         # A -> B -> C и A -> D -> C
         self.links = [
-            Link("A", "B", "1", travel_cost=10, headway=10, mean_travel_time=10, std_travel_time=0),
-            Link("B", "C", "1", travel_cost=15, headway=10, mean_travel_time=15, std_travel_time=2),
-            Link("A", "D", "2", travel_cost=12, headway=20, mean_travel_time=12, std_travel_time=5),
-            Link("D", "C", "2", travel_cost=13, headway=20, mean_travel_time=13, std_travel_time=5)
+            Link("A", "B", "1", travel_cost=10, headway=10, mean_travel_time=10),
+            Link("B", "C", "1", travel_cost=15, headway=10, mean_travel_time=15),
+            Link("A", "D", "2", travel_cost=12, headway=20, mean_travel_time=12),
+            Link("D", "C", "2", travel_cost=13, headway=20, mean_travel_time=13)
         ]
         
         self.stops = {"A", "B", "C", "D"}

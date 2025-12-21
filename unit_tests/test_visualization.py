@@ -12,11 +12,11 @@ from utils import Link
 class TestVisualization(unittest.TestCase):
     def setUp(self):
         self.links = [
-            Link("A", "B", "1", 10, 15, 10, 2),
-            Link("B", "C", "1", 15, 15, 15, 3),
+            Link("A", "B", "1", 10, 15, 10),
+            Link("B", "C", "1", 15, 15, 15),
             Link("A", "C", "2", 30, 5),
-            Link("B", "D", "3", 20, 20, 2),
-            Link("C", "D", "4", 10, 10, 1)
+            Link("B", "D", "3", 20, 20),
+            Link("C", "D", "4", 10, 10)
         ]
         
         self.stops = {"A", "B", "C", "D"}
