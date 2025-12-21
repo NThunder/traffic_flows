@@ -64,7 +64,7 @@ def find_optimal_strategy(all_links, all_stops, destination, T=60.0):
 
         # sum_uc = mean_travel_time_priority
 
-        if current_r == current_priority_r and curr_mean < mean_travel_time_priority:
+        if abs(current_r - current_priority_r) <= EPSILON and curr_mean < mean_travel_time_priority:
             continue
         
         if current_r > current_priority_r:
@@ -106,7 +106,7 @@ def find_optimal_strategy(all_links, all_stops, destination, T=60.0):
 
             updated_r = stats.norm.cdf(T - updated_mean, scale=math.sqrt(max(updated_var, 1e-8)))
 
-        if updated_r > current_r + 1e-6 or (updated_r == current_r and updated_mean < curr_mean):
+        if updated_r > current_r + 1e-6 or (abs(updated_r - current_r) <= EPSILON and updated_mean < curr_mean):
             mean_var[i] = (updated_mean, updated_var)
             freqs[i] += freq
             attractive_set.append(link)

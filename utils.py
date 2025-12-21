@@ -10,17 +10,15 @@ ALPHA = 1.0
 INFINITE_FREQUENCY = 99999999999.0
 MATH_INF = float('inf')
 VERBOSE = False
+EPSILON = 1e-6
 
 class Link:
-    def __init__(self, from_node, to_node, route_id, travel_cost, headway, mean_travel_time=0, std_travel_time=1, delay_mu=0, delay_sigma=0):
+    def __init__(self, from_node, to_node, route_id, travel_cost, headway, mean_travel_time=0):
         self.from_node = from_node
         self.to_node = to_node
         self.route_id = route_id
         self.travel_cost = travel_cost
         self.headway = headway
-        
-        self.delay_mu = delay_mu       # additional delays like weather
-        self.delay_sigma = delay_sigma # do not currently affect anything
 
 class Strategy:
     def __init__(self, labels, freqs, a_set):
@@ -183,8 +181,7 @@ def calculate_links(stop_times, active_trips, all_stops, stop_names=None, route_
 
             headway = 0.0 # sets actual headway later
 
-            std_travel_time = mean_travel_time * 0.2  # dumb assumption
-            link = Link(from_node, to_node, route_id, mean_travel_time, headway, mean_travel_time,  std_travel_time)
+            link = Link(from_node, to_node, route_id, mean_travel_time, headway, mean_travel_time)
             all_links.append(link)
 
     return all_links
@@ -370,8 +367,9 @@ def compute_average_volume(volumes):
     for from_node in volumes.links:
         for to_node in volumes.links[from_node]:
             v = volumes.links[from_node][to_node]
-            total_volume += v
-            count += 1
+            if v != 0:
+                total_volume += v
+                count += 1
 
     avg_volume = total_volume / count if count > 0 else 0.0
     return avg_volume, total_volume, count

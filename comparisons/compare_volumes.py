@@ -5,6 +5,8 @@ from utils import *
 import networkx as nx
 import matplotlib.pyplot as plt
 import os
+import argparse
+import sys
 
 def parse_sample_data():
     all_stops = {
@@ -51,15 +53,15 @@ def parse_sample_data():
         mean_time = sum(data['mean_time']) / len(data['mean_time'])
         std_time = sum(data['std_time']) / len(data['std_time'])
         headway = data['headway']
-        link = Link(from_node=from_node, to_node=to_node, route_id=route_id, travel_cost=mean_time, headway=headway, mean_travel_time=mean_time, std_travel_time=std_time)
+        link = Link(from_node=from_node, to_node=to_node, route_id=route_id, travel_cost=mean_time, headway=headway, mean_travel_time=mean_time)
         all_links.append(link)
     
     return all_links, all_stops
 
 
-def compare_approaches(T=60):
+def compare_approaches(T=60, limit=200000):
     directory = "improved-gtfs-moscow-official"
-    all_links, all_stops = parse_gtfs(directory, 15)
+    all_links, all_stops = parse_gtfs(directory, limit)
 
     print("Ищем пару связанных остановок...")
     origin, destination = find_connected_od_pair_with_min_hops(all_links)
@@ -96,13 +98,13 @@ def compare_approaches(T=60):
         for to_node in volumes_orig.links[from_node]:
             v_orig = volumes_orig.links[from_node][to_node]
             v_mod = volumes_mod.links.get(from_node, {}).get(to_node, 0.0)
-            print(f"Link ({from_node} -> {to_node}): orig={v_orig}, mod={v_mod}, diff={v_mod - v_orig}")
+            if v_mod != v_orig:
+                print(f"Link ({from_node} -> {to_node}): orig={v_orig}, mod={v_mod}, diff={v_mod - v_orig}")
 
     print("\nСредний объём на рёбрах:")
-    print(f"Original (только активные):  среднее = {avg_orig_A:.2f}, всего рёбер = {count_orig_A}", total_orig_A)
-    print(f"Modified (только активные): среднее = {avg_mod_A:.2f}, всего рёбер = {count_mod_A}", total_mod_A)
-        
-# compare_approaches(20)
+    print(f"Original (только активные):  среднее = {avg_orig_A:.2f}, всего рёбер = {count_orig_A}")
+    print(f"Modified (только активные): среднее = {avg_mod_A:.2f}, всего рёбер = {count_mod_A}")
+    
 
 def compare_fix_approaches(od_matrix, destination, T=60):
     all_links, all_stops = parse_sample_data()
@@ -120,12 +122,30 @@ def compare_fix_approaches(od_matrix, destination, T=60):
     visualize_volumes(all_links, all_stops, volumes_orig, volumes_mod, 
                         od_matrix, destination, T)
 
-od_matrix = {
-    'Res1': {
-        'Downtown': 120,
-    },
-    'Res3': {
-        'Downtown': 70,
-    },
-}
-compare_fix_approaches(od_matrix, 'Downtown', 34)
+def main():
+    parser = argparse.ArgumentParser(description='Сравнение алгоритмов Florian')
+    parser.add_argument('--mode', choices=['gtfs', 'sample'], default='gtfs',
+                       help='Режим запуска: gtfs (реальные данные) или sample (тестовые данные)')
+    parser.add_argument('--T', type=float, default=60.0,
+                       help='Deadline для модифицированного алгоритма (в минутах)')
+    parser.add_argument('--limit', type=int, default=100000,
+                       help='Ограничение для GTFS данных')
+    
+    args = parser.parse_args()
+    
+    if args.mode == 'gtfs':
+        compare_approaches(args.T, limit=args.limit)
+        
+    elif args.mode == 'sample':
+        od_matrix = {
+            'Res1': {
+                'Downtown': 120,
+            },
+            'Res3': {
+                'Downtown': 70,
+            },
+        }
+        compare_fix_approaches(od_matrix, 'Downtown', args.T)
+
+if __name__ == "__main__":
+    main()
