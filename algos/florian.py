@@ -5,25 +5,21 @@ import math
 
 def find_optimal_strategy(all_links, all_stops, destination):
     if VERBOSE:
-        print("1.1 Initialization")
+        print("Initialization")
     u = {stop: 0.0 if stop == destination else MATH_INF for stop in all_stops}
     f = {stop: 0.0 for stop in all_stops}
 
     overline_a = []
 
-    # Precompute links by ToNode
     links_by_to_node = {}
     for link in all_links:
-        # Проверяем, что обе остановки существуют в all_stops
         if link.to_node in all_stops and link.from_node in all_stops:
             if link.to_node not in links_by_to_node:
                 links_by_to_node[link.to_node] = []
             links_by_to_node[link.to_node].append(link)
 
-    # Priority queue
     pq = PriorityQueue()
     for link in all_links:
-        # Проверяем, что узел существует в all_stops
         if link.to_node in all_stops:
             pq.push(link, u[link.to_node] + link.travel_cost)
 
@@ -36,7 +32,6 @@ def find_optimal_strategy(all_links, all_stops, destination):
         i = a.from_node
         j = a.to_node
         
-        # Проверяем, что обе остановки существуют в all_stops
         if i not in all_stops or j not in all_stops:
             continue
             
@@ -53,8 +48,6 @@ def find_optimal_strategy(all_links, all_stops, destination):
 
         if VERBOSE:
             print(f"  f_a = {freq}")
-            print(f"  u_j + c_a = {u[j] + a.travel_cost}")
-            print(f"  u_i = {u[i]}")
 
         numerator_part = f[i] * u[i]
         if math.isnan(numerator_part):
@@ -75,8 +68,7 @@ def find_optimal_strategy(all_links, all_stops, destination):
         overline_a.append(a)
 
         if i in links_by_to_node:
-            for update_link in links_by_to_node[i]:  # update_link = (pred, i)
-                # Проверяем существование узлов
+            for update_link in links_by_to_node[i]:
                 if update_link.to_node in all_stops and update_link.from_node in all_stops:
                     pq.update(update_link, u[i] + update_link.travel_cost)
 
@@ -111,17 +103,17 @@ if __name__ == "__main__":
     directory = "improved-gtfs-moscow-official"
     all_links, all_stops = parse_gtfs(directory, 100000)
 
-    print("🔍 Ищем пару связанных остановок...")
+    print("Ищем пару связанных остановок...")
     origin, destination = find_connected_od_pair_with_min_hops(all_links)
 
     if origin is None or destination is None:
         raise ValueError("Не удалось найти ни одной пары остановок с путём между ними!")
 
-    print(f"✅ Найдена пара: origin={origin}, destination={destination}")
+    print(f"Найдена пара: origin={origin}, destination={destination}")
 
     origins_reaching_dest = get_all_origins_reaching_destination(all_links, destination)
 
-    print(f"🎯 Найдено {len(origins_reaching_dest)} остановок, из которых можно доехать до {destination}")
+    print(f"Найдено {len(origins_reaching_dest)} остановок, из которых можно доехать до {destination}")
 
     od_matrix = {}
     for origin in origins_reaching_dest:
@@ -129,5 +121,5 @@ if __name__ == "__main__":
             demand = random.uniform(50.0, 500.0)
             od_matrix[origin] = {destination: demand}
 
-    print(f"📊 OD-матрица создана: {len(od_matrix)} origin → {destination} (случайный спрос)")
+    print(f"OD-матрица создана: {len(od_matrix)} origin → {destination} (случайный спрос)")
     result = compute_sf(all_links, all_stops, destination, od_matrix)

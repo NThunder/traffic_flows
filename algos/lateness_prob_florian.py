@@ -2,82 +2,59 @@ from utils import *
 import math
 from scipy.stats import norm
 
+
+# Модифицированный Spiess-Florian (минимизация вероятности опоздания)
+
 def calculate_lateness_probability(mean_time, std_time, arrival_deadline):
     """
     Рассчитывает вероятность опоздания для заданного времени в пути
     
-    Параметры:
-    - mean_time: среднее время в пути
-    - std_time: стандартное отклонение времени в пути
-    - arrival_deadline: максимально допустимое время прибытия (относительно начала поездки)
-    
-    Возвращает:
-    - вероятность НЕ опоздания (вероятность прибытия вовремя)
+    Возвращает вероятность НЕ опоздания (вероятность прибытия вовремя)
     """
     if std_time <= 0:
-        # Если нет вариации, просто проверяем, укладываемся ли в дедлайн
         return 1.0 if mean_time <= arrival_deadline else 0.0
     
-    # Вероятность прибытия вовремя (CDF нормального распределения в точке arrival_deadline)
     prob_on_time = norm.cdf(arrival_deadline, loc=mean_time, scale=std_time)
     return prob_on_time
 
 def find_optimal_strategy(all_links, all_stops, destination, arrival_deadline):
-    """
-    Модифицированный алгоритм Флориана, минимизирующий вероятность опоздания
-    
-    Параметры:
-    - all_links: список всех связей в транспортной сети
-    - all_stops: список всех остановок
-    - destination: целевая остановка
-    - arrival_deadline: максимально допустимое время прибытия (в минутах от начала поездки)
-    """
     if VERBOSE:
-        print("1.1 Initialization for lateness probability model")
+        print("Initialization for lateness probability model")
 
-    # Инициализация: вероятность прибытия вовремя из целевой остановки равна 1.0
-    u = {stop: 1.0 if stop == destination else 0.0 for stop in all_stops} # теперь это вероятности, а не стоимости
+    # Инициализация: вероятность прибытия вовремя из destination равна 1.0
+    u = {stop: 1.0 if stop == destination else 0.0 for stop in all_stops}
     f = {stop: 0.0 for stop in all_stops}
 
     overline_a = []
 
-    # Precompute links by ToNode
     links_by_to_node = {}
     for link in all_links:
-        # Проверяем, что обе остановки существуют в all_stops
         if link.to_node in all_stops and link.from_node in all_stops:
             if link.to_node not in links_by_to_node:
                 links_by_to_node[link.to_node] = []
             links_by_to_node[link.to_node].append(link)
 
-    # Priority queue
-    # Вместо u[link.to_node] + link.travel_cost, мы будем использовать вероятность прибытия вовремя
+    # Вместо u[link.to_node] + link.travel_cost, используем вероятность прибытия вовремя
     pq = PriorityQueue()
     for link in all_links:
-        # Проверяем, что узел существует в all_stops
         if link.to_node in all_stops:
-            # Вероятность прибытия вовремя из начальной точки дуги
-            # Это будет равно вероятности прибытия вовремя в конечную точку дуги, умноженной на вероятность пройти эту дугу вовремя
-            # Но для начальной инициализации используем упрощенный подход
             prob = calculate_lateness_probability(link.mean_travel_time, link.std_travel_time, arrival_deadline)
-            # Мы максимизируем вероятность, поэтому используем отрицательное значение для min-heap
             pq.push(link, -prob)
 
     iteration = 0
-    max_iterations = 10000  # защита от бесконечного цикла
+    max_iterations = 10000
 
     while iteration < max_iterations:
         link, neg_priority = pq.pop()
         if link is None:
             break
             
-        priority = -neg_priority  # восстанавливаем исходную вероятность
+        priority = -neg_priority
         
         a = link
-        i = a.from_node  # начальная остановка дуги
-        j = a.to_node    # конечная остановка дуги
+        i = a.from_node
+        j = a.to_node
 
-        # Проверяем, что обе остановки существуют в all_stops
         if i not in all_stops or j not in all_stops:
             continue
 
@@ -86,47 +63,47 @@ def find_optimal_strategy(all_links, all_stops, destination, arrival_deadline):
         # 1. Вероятности прибытия вовремя из остановки j (u[j])
         # 2. Вероятности успешно пройти дугу a (включая ожидание и движение)
         
-        # Сначала рассчитываем характеристики дуги с учетом ожидания
-        waiting_mean = a.headway / 2.0 if a.headway > 0 else 0  # среднее время ожидания
-        waiting_std = a.headway / math.sqrt(12) if a.headway > 0 else 0  # std для равномерного распределения
+        waiting_mean = a.headway / 2.0 if a.headway > 0 else 0
+        waiting_std = a.headway / math.sqrt(12) if a.headway > 0 else 0
         
-        # Общее время: ожидание + движение
         total_mean = waiting_mean + a.mean_travel_time
         total_std = math.sqrt(waiting_std**2 + a.std_travel_time**2)
         
-        # Вероятность прибытия вовремя из j через дугу a
         prob_arrive_via_a = calculate_lateness_probability(total_mean, total_std, arrival_deadline)
+    
+        new_u_i = u[j] * prob_arrive_via_a
         
-        # Обновляем вероятность для узла i, если найден лучший путь
-        new_u_i = max(u[i], u[j] * prob_arrive_via_a)
+        if u[i] >= new_u_i:
+            continue
+
+        if VERBOSE:
+            print(f"Process: a = ({i}, {j})")
+            print(f"  u_i >= u_j * prob_arrive_via_a : {u[i]} < {u[j]} * {prob_arrive_via_a} - FALSE")
+
+        u[i] = new_u_i
         
-        if new_u_i > u[i]:
-            if VERBOSE:
-                print(f"Update: u[{i}] from {u[i]} to {new_u_i} via ({i}, {j})")
+        freq = INFINITE_FREQUENCY if a.headway <= 0 else 1 / a.headway
+        f[i] = freq if freq < INFINITE_FREQUENCY else 1.0
+        
+        if VERBOSE:
+            print(f"  f_a = {freq}")
 
-            u[i] = new_u_i
-            
-            # Обновляем частоту (в контексте вероятностей)
-            freq = INFINITE_FREQUENCY if a.headway <= 0 else 1 / a.headway
-            f[i] = freq if freq < INFINITE_FREQUENCY else 1.0 # адаптируем для вероятностной модели
-            
-            overline_a.append(a)
+        overline_a.append(a)
 
-            # Обновляем приоритеты для дуг, входящих в узел i
-            if i in links_by_to_node:
-                for update_link in links_by_to_node[i]:  # update_link = (pred, i)
-                    # Проверяем существование узлов
-                    if update_link.to_node in all_stops and update_link.from_node in all_stops:
-                        # Пересчитываем вероятность для дуги update_link
-                        waiting_mean_upd = update_link.headway / 2.0 if update_link.headway > 0 else 0
-                        waiting_std_upd = update_link.headway / math.sqrt(12) if update_link.headway > 0 else 0
-                        total_mean_upd = waiting_mean_upd + update_link.mean_travel_time
-                        total_std_upd = math.sqrt(waiting_std_upd**2 + update_link.std_travel_time**2)
-                        
-                        prob_upd = calculate_lateness_probability(total_mean_upd, total_std_upd, arrival_deadline)
-                        pq.update(update_link, -u[i] * prob_upd)  # используем новое значение u[i]
+        if i in links_by_to_node:
+            for update_link in links_by_to_node[i]:
+                if update_link.to_node in all_stops and update_link.from_node in all_stops:
 
-        iteration += 1
+                    waiting_mean_upd = update_link.headway / 2.0 if update_link.headway > 0 else 0
+                    waiting_std_upd = update_link.headway / math.sqrt(12) if update_link.headway > 0 else 0
+
+                    total_mean_upd = waiting_mean_upd + update_link.mean_travel_time
+                    total_std_upd = math.sqrt(waiting_std_upd**2 + update_link.std_travel_time**2)
+                    
+                    prob_upd = calculate_lateness_probability(total_mean_upd, total_std_upd, arrival_deadline)
+                    pq.update(update_link, -u[i] * prob_upd)
+
+    iteration += 1
 
     return Strategy(u, f, overline_a)
 
@@ -136,8 +113,8 @@ def assign_demand(all_links, all_stops, optimal_strategy, od_matrix, destination
     """
     # Сортируем a_set по убыванию вероятности (вместо возрастания стоимости)
     optimal_strategy.a_set = sorted(
-        optimal_strategy.a_set, 
-        key=lambda a: -(optimal_strategy.labels[a.to_node]),  # используем вероятности, а не стоимости
+        optimal_strategy.a_set,
+        key=lambda a: -(optimal_strategy.labels[a.to_node]),
         reverse=True
     )
     return calculate_flow_volumes(all_links, all_stops, optimal_strategy, od_matrix, destination)

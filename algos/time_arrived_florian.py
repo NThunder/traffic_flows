@@ -1,6 +1,6 @@
 from utils import *
 import math
-from scipy import stats  # Для нормального распределения в модификации
+from scipy import stats
 
 def find_optimal_strategy(all_links, all_stops, destination, T=60.0):
     """
