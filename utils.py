@@ -114,17 +114,26 @@ def parse_gtfs_limited(directory, limit=100):
     calendar_path = os.path.join(directory, 'calendar.txt')
 
     all_stops = set()
-    with open(stops_path, 'r') as f:
+    stop_names = {}  # Словарь для хранения названий остановок
+    with open(stops_path, 'r', encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for i, row in enumerate(tqdm(reader, desc="Reading stops", total=min(limit, 10105))):
             all_stops.add(row['stop_id'])
-            if i == 0 or i == 1000:
+            stop_names[row['stop_id']] = row.get('stop_name', row['stop_id'])  # Используем ID, если название отсутствует
+            if i == 0 or i == 10:
                 print(row['stop_id'])
+
+    # Загружаем названия маршрутов
+    route_names = {}
+    with open(routes_path, 'r', encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for row in tqdm(reader, desc="Reading routes"):
+            route_names[row['route_id']] = row.get('route_long_name', row.get('route_short_name', row['route_id']))
 
     active_services = set()
     date_str = '20251217'  # Dec 17, 2025
     weekday = 'wednesday'
-    with open(calendar_path, 'r') as f:
+    with open(calendar_path, 'r', encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for row in reader:
             start = row['start_date']
@@ -133,14 +142,14 @@ def parse_gtfs_limited(directory, limit=100):
                 active_services.add(row['service_id'])
 
     active_trips = {}
-    with open(trips_path, 'r') as f:
+    with open(trips_path, 'r', encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for i, row in enumerate(tqdm(reader, desc="Reading trips", total=min(limit, 25000))):
             if row['service_id'] in active_services:
                 active_trips[row['trip_id']] = row['route_id']
 
     stop_times = {}
-    with open(stop_times_path, 'r') as f:
+    with open(stop_times_path, 'r', encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for i, row in enumerate(tqdm(reader, desc="Reading stop_times", total=min(limit, 2660216))):
             if i >= limit:
@@ -152,9 +161,9 @@ def parse_gtfs_limited(directory, limit=100):
                 stop_times[trip_id] = []
             stop_times[trip_id].append(row)
 
-    return stop_times, active_trips, all_stops
+    return stop_times, active_trips, all_stops, stop_names, route_names
 
-def calculate_links(stop_times, active_trips, all_stops):
+def calculate_links(stop_times, active_trips, all_stops, stop_names=None, route_names=None):
     all_links = []
     for trip_id, times in tqdm(stop_times.items(), desc="Creating links"):
         times.sort(key=lambda x: int(x['stop_sequence']))
@@ -180,7 +189,7 @@ def calculate_links(stop_times, active_trips, all_stops):
 
     return all_links
 
-def calculate_headways(stop_times, active_trips, all_links):
+def calculate_headways(stop_times, active_trips, all_links, stop_names=None, route_names=None):
     departures = {}  # (route_id, stop_id) -> list of dep_times in seconds
     for trip_id, times in tqdm(stop_times.items(), desc="Processing trips for headways"):
         route_id = active_trips[trip_id]
@@ -207,6 +216,47 @@ def calculate_headways(stop_times, active_trips, all_links):
         link.headway = departures.get(key, 0.0)
 
     return all_links
+
+def find_shortest_route_pair(all_links, max_stops=10):
+    """
+    Находит пару остановок с маршрутом длиной не более max_stops остановок
+    """
+    from collections import defaultdict, deque
+    
+    # Построим граф
+    graph = defaultdict(list)
+    nodes = set()
+    for link in all_links:
+        graph[link.from_node].append(link.to_node)
+        nodes.add(link.from_node)
+        nodes.add(link.to_node)
+    
+    if len(nodes) < 2:
+        return None, None
+
+    node_list = list(nodes)
+    
+    # Попробуем найти кратчайший маршрут между парами узлов
+    for origin in node_list[:100]:  # Ограничиваем количество проверяемых origin
+        # Используем BFS для поиска ближайших узлов
+        visited = {origin: 0}
+        queue = deque([(origin, 0)])
+        
+        while queue:
+            current, dist = queue.popleft()
+            
+            if dist > 0 and dist <= max_stops and current != origin:
+                return origin, current
+            
+            if dist >= max_stops:
+                continue
+                
+            for neighbor in graph[current]:
+                if neighbor not in visited:
+                    visited[neighbor] = dist + 1
+                    queue.append((neighbor, dist + 1))
+    
+    return None, None
 
 from collections import defaultdict, deque
 

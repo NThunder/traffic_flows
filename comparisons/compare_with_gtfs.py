@@ -9,8 +9,8 @@ from datetime import datetime
 sys.path.append('.')
 
 from algos.florian import compute_sf, Link as OriginalLink, parse_gtfs as original_parse_gtfs
-from algos.lateness_prob_florian import compute_sf_with_lateness_prob, Link as ProbLink, parse_gtfs as prob_parse_gtfs
-from utils import parse_gtfs_limited, calculate_headways
+from algos.time_arrived_florian import compute_sf as compute_sf_with_time_arrived, Link as ProbLink, parse_gtfs as prob_parse_gtfs
+from utils import parse_gtfs_limited, calculate_links, calculate_headways, find_connected_od_pair_with_min_hops, find_shortest_route_pair
 
 
 def run_comparison_with_gtfs(limit=10000):
@@ -25,10 +25,18 @@ def run_comparison_with_gtfs(limit=10000):
     directory = "improved-gtfs-moscow-official"
     
     # Парсим GTFS с ограничением
-    stop_times, active_trips, all_stops = parse_gtfs_limited(directory, limit=limit)
+    stop_times, active_trips, all_stops, stop_names, route_names = parse_gtfs_limited(directory, limit=limit)
     
     # Рассчитываем интервалы
-    departures = calculate_headways(stop_times, active_trips)
+    temp_links = calculate_headways(stop_times, active_trips, [], stop_names, route_names)
+    
+    # Создаем словарь интервалов из модифицированных связей
+    departures = {}
+    for link in temp_links:
+        key = (link.route_id, link.from_node)
+        departures[key] = link.headway
+    
+    # all_links = calculate_links(stop_times, active_trips, all_stops)
     
     # Создаем связи для оригинального алгоритма
     print("Создание связей для оригинального алгоритма...")
@@ -79,14 +87,25 @@ def run_comparison_with_gtfs(limit=10000):
             prob_links.append(link)
 
     # Параметры для тестирования
-    # Выберем первую остановку в all_stops как destination и origin
-    stops_list = list(all_stops)
-    if len(stops_list) < 2:
-        print("Недостаточно остановок для тестирования")
-        return None, None
+    # Используем функцию из utils для нахождения пары с коротким маршрутом (до 10 остановок)
+    origin, destination = find_shortest_route_pair(original_links, max_stops=10)
     
-    destination = stops_list[0]
-    origin = stops_list[1] if len(stops_list) > 1 else stops_list[0]
+    # Если не найдена подходящая пара, используем первую и вторую остановку
+    if origin is None or destination is None:
+        stops_list = list(all_stops)
+        if len(stops_list) < 2:
+            print("Недостаточно остановок для тестирования")
+            return None, None
+        destination = stops_list[0]
+        origin = stops_list[1] if len(stops_list) > 1 else stops_list[0]
+    else:
+        print(f"Найдена пара с маршрутом длиной до 10 остановок: {origin} -> {destination}")
+    
+    # Проверяем, что origin и destination существуют в all_stops
+    if origin not in all_stops:
+        origin = list(all_stops)[0]
+    if destination not in all_stops:
+        destination = list(all_stops)[1] if len(all_stops) > 1 else list(all_stops)[0]
     od_matrix = {origin: {destination: 1000}}  # 1000 пассажиров из origin в destination
     arrival_deadline = 45  # дедлайн в 45 минут
     
@@ -97,7 +116,7 @@ def run_comparison_with_gtfs(limit=10000):
     
     # Вычисляем результаты с помощью модифицированного алгоритма
     print("Вычисление результатов с вероятностным алгоритмом...")
-    result_lateness_prob = compute_sf_with_lateness_prob(
+    result_lateness_prob = compute_sf_with_time_arrived(
         prob_links, all_stops, destination, od_matrix, arrival_deadline
     )
     
@@ -119,7 +138,7 @@ def run_comparison_with_gtfs(limit=10000):
     print(f"Новый алгоритм - вероятность прибытия вовремя из {origin}: {result_lateness_prob.strategy.labels.get(origin, 'N/A')}")
     
     # Создаем визуализацию
-    create_comparison_visualization(original_result, result_lateness_prob, all_stops, origin, destination)
+    create_comparison_visualization(original_result, result_lateness_prob, all_stops, origin, destination, stop_names, route_names)
     
     return original_result, result_lateness_prob
 
@@ -128,52 +147,171 @@ def convert_time(time_str):
     hours_converted = int(time_str[:2]) % 24
     return "{:02d}:".format(hours_converted) + time_str[3:]
 
-def create_comparison_visualization(original_result, prob_result, all_stops, origin, destination):
+def create_comparison_visualization(original_result, prob_result, all_stops, origin, destination, stop_names=None, route_names=None):
     """
-    Создает визуализацию сравнения двух алгоритмов
+    Создает визуализацию сравнения двух алгоритмов - только объемы
     """
-    # Подготовка данных для визуализации
-    # Выбираем только несколько ключевых остановок для отображения
-    stops_to_show = list(all_stops)[:10]  # Показываем только первые 10 остановок
+    # Для более короткого маршрута, попробуем найти маршрут с меньшим количеством остановок
+    # Используем стратегию для определения остановок на маршруте
+    from collections import defaultdict
+    from utils import get_all_origins_reaching_destination
     
-    # Получаем значения меток для обеих стратегий
-    original_labels = [original_result.strategy.labels.get(stop, 0) for stop in stops_to_show]
-    prob_labels = [prob_result.strategy.labels.get(stop, 0) for stop in stops_to_show]
+    # Построим список остановок в порядке следования из origin в destination
+    # Используем a_set (множество рёбер оптимальной стратегии) для построения маршрута
+    def get_path_stops(strategy, origin, destination):
+        # Построим граф из рёбер в a_set
+        graph = defaultdict(list)
+        for link in strategy.a_set:
+            graph[link.from_node].append((link.to_node, link))
+        
+        # Найдем путь от origin до destination
+        visited = set()
+        path = []
+        
+        def dfs(current, target, current_path):
+            if current == target:
+                return current_path + [current]
+            
+            if current in visited:
+                return None
+            
+            visited.add(current)
+            for next_node, link in graph[current]:
+                result = dfs(next_node, target, current_path + [current])
+                if result:
+                    return result
+            visited.remove(current)
+            return None
+        
+        result_path = dfs(origin, destination, [])
+        return result_path if result_path else [origin, destination]  # В крайнем случае, просто origin и destination
     
-    # Создаем график
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
+    # Получаем остановки вдоль маршрута
+    path_stops_original = get_path_stops(original_result.strategy, origin, destination)
+    path_stops_prob = get_path_stops(prob_result.strategy, origin, destination)
     
-    # График 1: Сравнение меток узлов
+    # Используем более короткий маршрут из двух
+    if len(path_stops_original) <= len(path_stops_prob) and len(path_stops_original) <= 10:
+        stops_to_show = path_stops_original
+    elif len(path_stops_prob) <= 10:
+        stops_to_show = path_stops_prob
+    else:
+        # Если оба маршрута длиннее 10, используем активные остановки, но ограничиваем до 10
+        active_stops = set()
+        for stop, volume in original_result.volumes.nodes.items():
+            if volume != 0:
+                active_stops.add(stop)
+        for stop, volume in prob_result.volumes.nodes.items():
+            if volume != 0:
+                active_stops.add(stop)
+        
+        # Включаем origin и destination
+        displayed_stops = [origin]
+        if destination != origin and len(displayed_stops) < 10:
+            displayed_stops.append(destination)
+        
+        # Добавляем остальные активные остановки
+        for stop in active_stops:
+            if stop != origin and stop != destination and len(displayed_stops) < 10:
+                displayed_stops.append(stop)
+        
+        stops_to_show = displayed_stops
+    
+    # Преобразуем ID остановок в их названия, если доступны
+    if stop_names:
+        stop_labels = [stop_names.get(stop, stop) for stop in stops_to_show]
+    else:
+        stop_labels = stops_to_show
+    
+    # Определяем, какие остановки являются origin или destination
+    special_stops = []
+    for stop in stops_to_show:
+        if stop == origin and stop == destination:
+            special_stops.append("origin & dest")
+        elif stop == origin:
+            special_stops.append("origin")
+        elif stop == destination:
+            special_stops.append("destination")
+        else:
+            special_stops.append("regular")
+    
+    # Создаем график - только сравнение объемов
+    fig, ax = plt.subplots(1, 1, figsize=(12, 6))
+    
+    # Получаем информацию о маршрутах для заголовка
+    # Ищем уникальные route_id, участвующие в пути
+    routes_used = set()
+    for link in original_result.strategy.a_set:
+        routes_used.add(link.route_id)
+    for link in prob_result.strategy.a_set:
+        routes_used.add(link.route_id)
+    
+    # Преобразуем route_id в русские названия маршрутов, если доступны
+    if route_names:
+        route_labels = [route_names.get(route_id, route_id) for route_id in routes_used]
+        routes_str = ", ".join(route_labels[:5])  # Ограничиваем до 5 маршрутов в заголовке
+        if len(route_labels) > 5:
+            routes_str += f" и еще {len(route_labels) - 5} маршрутов"
+    else:
+        routes_str = ", ".join(list(routes_used)[:5])  # Ограничиваем до 5 маршрутов в заголовке
+        if len(routes_used) > 5:
+            routes_str += f" и еще {len(routes_used) - 5} маршрутов"
+    
+    # Сравнение объемов на узлах
     x = np.arange(len(stops_to_show))
     width = 0.35
     
-    ax1.bar(x - width/2, original_labels, width, label='Оригинальный алгоритм (затраты)', alpha=0.8)
-    ax1.bar(x + width/2, prob_labels, width, label='Алгоритм с вероятностью опоздания', alpha=0.8)
+    # Получаем объемы для каждой остановки
+    original_volumes = []
+    for stop in stops_to_show:
+        value = original_result.volumes.nodes.get(stop, 0)
+        # Если значение - массив, берем первое значение
+        if hasattr(value, '__len__') and not isinstance(value, str):
+            original_volumes.append(value[0] if len(value) > 0 else 0)
+        else:
+            original_volumes.append(value)
     
-    ax1.set_xlabel('Остановки')
-    ax1.set_ylabel('Значение метки')
-    ax1.set_title('Сравнение значений меток узлов')
-    ax1.set_xticks(x)
-    ax1.set_xticklabels(stops_to_show, rotation=45, ha="right")
-    ax1.legend()
+    prob_volumes = []
+    for stop in stops_to_show:
+        value = prob_result.volumes.nodes.get(stop, 0)
+        # Если значение - массив, берем первое значение
+        if hasattr(value, '__len__') and not isinstance(value, str):
+            prob_volumes.append(value[0] if len(value) > 0 else 0)
+        else:
+            prob_volumes.append(value)
     
-    # График 2: Сравнение объемов на узлах
-    original_volumes = [original_result.volumes.nodes.get(stop, 0) for stop in stops_to_show]
-    prob_volumes = [prob_result.volumes.nodes.get(stop, 0) for stop in stops_to_show]
+    # Используем цвета для различия алгоритмов
+    bars1 = ax.bar(x - width/2, original_volumes, width, label='Оригинальный алгоритм', alpha=0.8, color='skyblue')
+    bars2 = ax.bar(x + width/2, prob_volumes, width, label='Алгоритм с вероятностью опоздания', alpha=0.8, color='orange')
     
-    ax2.bar(x - width/2, original_volumes, width, label='Оригинальный алгоритм', alpha=0.8)
-    ax2.bar(x + width/2, prob_volumes, width, label='Алгоритм с вероятностью опоздания', alpha=0.8)
+    ax.set_xlabel('Остановки')
+    ax.set_ylabel('Объемы')
+    ax.set_title(f'Сравнение объемов на узлах (Маршруты: {routes_str})')
+    ax.set_xticks(x)
+    ax.set_xticklabels(stop_labels, rotation=45, ha="right")
+    ax.legend()
     
-    ax2.set_xlabel('Остановки')
-    ax2.set_ylabel('Объемы')
-    ax2.set_title('Сравнение объемов на узлах')
-    ax2.set_xticks(x)
-    ax2.set_xticklabels(stops_to_show, rotation=45, ha="right")
-    ax2.legend()
+    # Добавляем легенду для обозначения типов остановок
+    from matplotlib.patches import Patch
+    legend_elements = [Patch(facecolor='skyblue', label='Оригинальный алгоритм'),
+                       Patch(facecolor='orange', label='Алгоритм с вероятностью опоздания')]
     
-    plt.tight_layout()
+    # Также добавим информацию о том, какая остановка является начальной/конечной
+    # Подписываем особым образом origin и destination
+    for i, stop_type in enumerate(special_stops):
+        if stop_type == "origin":
+            ax.get_xticklabels()[i].set_weight('bold')
+        elif stop_type == "destination":
+            ax.get_xticklabels()[i].set_style('italic')
+        elif stop_type == "origin & dest":
+            ax.get_xticklabels()[i].set_weight('bold')
+            ax.get_xticklabels()[i].set_style('italic')
+    
+    fig.legend(handles=legend_elements, loc='upper center', bbox_to_anchor=(0.5, 0.95), ncol=2)
+    
+    plt.tight_layout(rect=[0, 0, 1, 0.93])  # Делаем место для верхней легенды
     plt.savefig('gtfs_comparison_results.png', dpi=300, bbox_inches='tight')
-    print(f"\nГрафики сравнения сохранены в файл 'gtfs_comparison_results.png'")
+    print(f"\nГрафик сравнения объемов сохранен в файл 'gtfs_comparison_results.png'")
     plt.show()
 
 
@@ -234,14 +372,25 @@ def run_extended_comparison_with_gtfs(limit=5000):
     print("РАСШИРЕННОЕ СРАВНЕНИЕ С РАЗЛИЧНЫМИ ВРЕМЕННЫМИ ДЕДЛАЙНАМИ (на GTFS-данных)")
     print("="*70)
     
+    def convert_time(time_str):
+        """Преобразование времени из GTFS формата"""
+        hours_converted = int(time_str[:2]) % 24
+        return "{:02d}:".format(hours_converted) + time_str[3:]
+    
     # Используем ограниченный парсинг GTFS
     directory = "improved-gtfs-moscow-official"
     
     # Парсим GTFS с ограничением
-    stop_times, active_trips, all_stops = parse_gtfs_limited(directory, limit=limit)
+    stop_times, active_trips, all_stops, stop_names, route_names = parse_gtfs_limited(directory, limit=limit)
     
     # Рассчитываем интервалы
-    departures = calculate_headways(stop_times, active_trips)
+    temp_links = calculate_headways(stop_times, active_trips, [], stop_names, route_names)
+    
+    # Создаем словарь интервалов из модифицированных связей
+    departures = {}
+    for link in temp_links:
+        key = (link.route_id, link.from_node)
+        departures[key] = link.headway
     
     # Создаем связи для оригинального алгоритма
     print("Создание связей для оригинального алгоритма...")
@@ -290,16 +439,28 @@ def run_extended_comparison_with_gtfs(limit=5000):
 
             link = ProbLink(from_node, to_node, route_id, mean_travel_time, headway, mean_travel_time, std_travel_time)
             prob_links.append(link)
+    
 
     # Параметры для тестирования
-    # Выберем первую остановку в all_stops как destination и вторую как origin
-    stops_list = list(all_stops)
-    if len(stops_list) < 2:
-        print("Недостаточно остановок для тестирования")
-        return
+    # Используем функцию из utils для нахождения пары с коротким маршрутом (до 10 остановок)
+    origin, destination = find_shortest_route_pair(original_links, max_stops=10)
     
-    destination = stops_list[0]
-    origin = stops_list[1] if len(stops_list) > 1 else stops_list[0]
+    # Если не найдена подходящая пара, используем первую и вторую остановку
+    if origin is None or destination is None:
+        stops_list = list(all_stops)
+        if len(stops_list) < 2:
+            print("Недостаточно остановок для тестирования")
+            return
+        destination = stops_list[0]
+        origin = stops_list[1] if len(stops_list) > 1 else stops_list[0]
+    else:
+        print(f"Найдена пара с маршрутом длиной до 10 остановок: {origin} -> {destination}")
+    
+    # Проверяем, что origin и destination существуют в all_stops
+    if origin not in all_stops:
+        origin = list(all_stops)[0]
+    if destination not in all_stops:
+        destination = list(all_stops)[1] if len(all_stops) > 1 else list(all_stops)[0]
     od_matrix = {origin: {destination: 1000}}  # 1000 пассажиров из origin в destination
     
     # Тестируем с разными временными дедлайнами
@@ -315,7 +476,7 @@ def run_extended_comparison_with_gtfs(limit=5000):
         print(f"Обработка дедлайна: {deadline} минут")
         
         # Вычисляем результаты с помощью модифицированного алгоритма
-        prob_result = compute_sf_with_lateness_prob(
+        prob_result = compute_sf_with_time_arrived(
             prob_links, all_stops, destination, od_matrix, deadline
         )
         
@@ -324,6 +485,12 @@ def run_extended_comparison_with_gtfs(limit=5000):
         
         prob_success = prob_result.strategy.labels.get(origin, 0)
         original_cost = original_result.strategy.labels.get(origin, 0)
+        
+        # Обработка случая, когда значения могут быть кортежами или другими типами
+        if hasattr(prob_success, '__len__') and not isinstance(prob_success, str):
+            prob_success = prob_success[0] if len(prob_success) > 0 else 0
+        if hasattr(original_cost, '__len__') and not isinstance(original_cost, str):
+            original_cost = original_cost[0] if len(original_cost) > 0 else 0
         
         print(f"{deadline:11d} | {prob_success:23.4f} | {original_cost:16.4f}")
         
