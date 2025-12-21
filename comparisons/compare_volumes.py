@@ -13,31 +13,31 @@ def parse_sample_data():
         'Mid1', "Park"
     }
 
-    # links_data = [
-    #     ('Metro_Center', 'Downtown', 'M1', 10, 2, 5),
-
-    #     # Рискованный быстрый автобус: высокая variance
-    #     ('Res1', 'Mid1', 'B1', 8, 15, 10),  # mean=8, std=15 (high risk)
-    #     ('Mid1', 'Downtown', 'B1', 12, 15, 10),
-
-    #     # Для Res3: рискованный прямой
-    #     ('Res3', 'Downtown', 'X2', 15, 20, 20),  # fast mean=15, high std=20
-
-    #     # Надёжный альтернативный для Res3 через метро
-    #     ('Res3', 'Metro_Center', 'M2', 18, 2, 5),
-    #     # Используем существующий Metro_Center -> Downtown
-
-    #     ('Metro_Center', 'Park', 'WALK', 6, 0, 0),
-
-    #     ('Park', 'Downtown', 'WALK', 6, 0, 0),
-
-    # ]
-    
     links_data = [
-        ('Res3',         'Downtown',     'M1', 10, 0, 10),
-        ('Res3',         'Metro_Center', 'M2',  5, 0,  1),
-        ('Metro_Center', 'Downtown',     'M2',  5, 0,  1),
+        ('Metro_Center', 'Downtown', 'M1', 10, 2, 5),
+
+        # Рискованный быстрый автобус: высокая variance
+        ('Res1', 'Mid1', 'B1', 8, 15, 10),  # mean=8, std=15 (high risk)
+        ('Mid1', 'Downtown', 'B1', 12, 15, 10),
+
+        # Для Res3: рискованный прямой
+        ('Res3', 'Downtown', 'X2', 15, 20, 20),  # fast mean=15, high std=20
+
+        # Надёжный альтернативный для Res3 через метро
+        ('Res3', 'Metro_Center', 'M2', 18, 2, 5),
+        # Используем существующий Metro_Center -> Downtown
+
+        ('Metro_Center', 'Park', 'WALK', 6, 0, 0),
+
+        ('Park', 'Downtown', 'WALK', 6, 0, 0),
+
     ]
+    
+    # links_data = [
+    #     ('Res3',         'Downtown',     'M1', 10, 0, 10),
+    #     ('Res3',         'Metro_Center', 'M2',  5, 0,  1),
+    #     ('Metro_Center', 'Downtown',     'M2',  5, 0,  1),
+    # ]
 
     unique_links = {}
     for from_node, to_node, route_id, mean_time, std_time, headway in links_data:
@@ -64,7 +64,7 @@ def parse_sample_data():
 
 def compare_approaches(T=60):
     directory = "improved-gtfs-moscow-official"
-    all_links, all_stops = parse_gtfs(directory, 100000)
+    all_links, all_stops = parse_gtfs(directory, 15)
 
     print("🔍 Ищем пару связанных остановок...")
     origin, destination = find_connected_od_pair_with_min_hops(all_links)
@@ -113,30 +113,30 @@ def compare_approaches(T=60):
 
     print(f"Изменение среднего (активные): {avg_mod_A - avg_orig_A:+.2f}")
         
-compare_approaches(60)
+# compare_approaches(20)
 
-# def compare_fix_approaches(od_matrix, destination, T=60):
-#     all_links, all_stops = parse_sample_data()
-#     strategy_orig = find_optimal_strategy(all_links, all_stops, destination)
-#     volumes_orig = assign_demand_florain(all_links, all_stops, strategy_orig, od_matrix, destination)
-#     strategy_mod = find_optimal_strategy_modified(all_links, all_stops, destination, T)
-#     volumes_mod = assign_demand_time_arrived(all_links, all_stops, strategy_mod, od_matrix, destination)
-#     print("Сравнение распределений потоков (original vs modified):")
-#     for from_node in volumes_orig.links:
-#         for to_node in volumes_orig.links[from_node]:
-#             v_orig = volumes_orig.links[from_node][to_node]
-#             v_mod = volumes_mod.links.get(from_node, {}).get(to_node, 0.0)
-#             print(f"Link ({from_node} -> {to_node}): orig={v_orig}, mod={v_mod}, diff={v_mod - v_orig}")
+def compare_fix_approaches(od_matrix, destination, T=60):
+    all_links, all_stops = parse_sample_data()
+    strategy_orig = find_optimal_strategy(all_links, all_stops, destination)
+    volumes_orig = assign_demand_florain(all_links, all_stops, strategy_orig, od_matrix, destination)
+    strategy_mod = find_optimal_strategy_modified(all_links, all_stops, destination, T)
+    volumes_mod = assign_demand_time_arrived(all_links, all_stops, strategy_mod, od_matrix, destination)
+    print("Сравнение распределений потоков (original vs modified):")
+    for from_node in volumes_orig.links:
+        for to_node in volumes_orig.links[from_node]:
+            v_orig = volumes_orig.links[from_node][to_node]
+            v_mod = volumes_mod.links.get(from_node, {}).get(to_node, 0.0)
+            print(f"Link ({from_node} -> {to_node}): orig={v_orig}, mod={v_mod}, diff={v_mod - v_orig}")
 
-#     visualize_volumes(all_links, all_stops, volumes_orig, volumes_mod, 
-#                         od_matrix, destination, T)
+    visualize_volumes(all_links, all_stops, volumes_orig, volumes_mod, 
+                        od_matrix, destination, T)
 
-# od_matrix = {
-#     'Res1': {
-#         'Downtown': 120,
-#     },
-#     'Res3': {
-#         'Downtown': 70,
-#     },
-# }
-# compare_fix_approaches(od_matrix, 'Downtown', 34)
+od_matrix = {
+    'Res1': {
+        'Downtown': 120,
+    },
+    'Res3': {
+        'Downtown': 70,
+    },
+}
+compare_fix_approaches(od_matrix, 'Downtown', 34)
