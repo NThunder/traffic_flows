@@ -92,6 +92,18 @@ def compare_approaches(T=60, limit=200000):
     
     avg_orig_A, total_orig_A, count_orig_A = compute_average_volume(volumes_orig)
     avg_mod_A, total_mod_A, count_mod_A = compute_average_volume(volumes_mod)
+
+    node_to_links : dict[str, dict[tuple[str, str, str], int]] = {}
+    for link in all_links:
+        node = link.from_node
+        if node not in node_to_links:
+            node_to_links[node] = {}
+
+        key = (link.from_node, link.to_node, link.route_id)
+        if key not in node_to_links[node]:
+            node_to_links[node][key] = 0
+        
+        node_to_links[node][key] += 1
     
     print("Сравнение распределений потоков (original vs modified):")
     for from_node in volumes_orig.links:
@@ -100,6 +112,12 @@ def compare_approaches(T=60, limit=200000):
             v_mod = volumes_mod.links.get(from_node, {}).get(to_node, 0.0)
             if v_mod != v_orig:
                 print(f"Link ({from_node} -> {to_node}): orig={v_orig}, mod={v_mod}, diff={v_mod - v_orig}")
+                
+                links_from = node_to_links[from_node]
+                for key in links_from.keys():
+                    if to_node == key[1]:
+                        route_id = key[2]
+                        print(f"Link route_id: {route_id}")
 
     print("\nСредний объём на рёбрах:")
     print(f"Original (только активные):  среднее = {avg_orig_A:.2f}, всего рёбер = {count_orig_A}")

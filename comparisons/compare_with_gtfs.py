@@ -374,10 +374,10 @@ def create_comparison_visualization(original_result, prob_result, all_stops, ori
         if stop_type == "origin":
             ax.get_xticklabels()[i].set_weight('bold')
         elif stop_type == "destination":
-            ax.get_xticklabels()[i].set_style('bold')
+            ax.get_xticklabels()[i].set_weight('bold')
         elif stop_type == "origin & dest":
             ax.get_xticklabels()[i].set_weight('bold')
-            ax.get_xticklabels()[i].set_style('bold')
+            ax.get_xticklabels()[i].set_weight('bold')
     
     fig.legend(handles=legend_elements, loc='upper center', bbox_to_anchor=(0.5, 0.95), ncol=2)
     
