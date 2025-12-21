@@ -18,9 +18,13 @@ python -m pytest unit_tests/test_florian.py -v
 python -m pytest unit_tests/test_visualization.py -v
 ```
 
-### Запуск
+## Запуск
 ```bash
 pip install -r requirements.txt
 pip install -e .
 python3 ./comparisons/compare_volumes.py
 ```
+## Результат
+![Сравнение](visual/network_volumes_highlighted.png )
+
+### Математичеcкое описание методов в description.ipynb
