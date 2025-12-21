@@ -48,7 +48,7 @@ class PriorityQueue:
         self.counter = 0
 
     def push(self, link, priority):
-        key = (link.from_node, link.to_node)
+        key = (link.from_node, link.to_node, link.route_id)
         if key in self.entry_finder:
             self._remove_entry(key)
         count = self.counter
@@ -65,13 +65,45 @@ class PriorityQueue:
         while self.heap:
             priority, count, link = heapq.heappop(self.heap)
             if link != 'REMOVED':
-                key = (link.from_node, link.to_node)
+                key = (link.from_node, link.to_node, link.route_id)
                 del self.entry_finder[key]
                 return link, priority
         return None, None
 
     def update(self, link, priority):
         self.push(link, priority)  # Since push removes old if exists
+        
+class PriorityQueue2:
+    def __init__(self):
+        self.heap = []
+        self.entry_finder = {}
+        self.counter = 0
+
+    def push(self, link, priority1, priority2):
+        key = (link.from_node, link.to_node, link.route_id)
+        if key in self.entry_finder:
+            self._remove_entry(key)
+        count = self.counter
+        self.counter += 1
+        entry = [priority1, priority2, count, link]
+        self.entry_finder[key] = entry
+        heapq.heappush(self.heap, entry)
+
+    def _remove_entry(self, key):
+        entry = self.entry_finder.pop(key)
+        entry[-1] = 'REMOVED'  # Mark as removed
+
+    def pop(self):
+        while self.heap:
+            priority1, priority2, count, link = heapq.heappop(self.heap)
+            if link != 'REMOVED':
+                key = (link.from_node, link.to_node, link.route_id)
+                del self.entry_finder[key]
+                return link, priority1, priority2
+        return None, None, None
+
+    def update(self, link, priority1, priority2):
+        self.push(link, priority1, priority2)
 
 def convert_time(time_str):
     """Преобразование времени из GTFS формата"""
