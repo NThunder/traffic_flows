@@ -18,12 +18,9 @@ class Link:
         self.route_id = route_id
         self.travel_cost = travel_cost
         self.headway = headway
-        # for lateness_prob_florian
-        self.mean_travel_time = mean_travel_time  # среднее время в пути
-        self.std_travel_time = std_travel_time    # стандартное отклонение времени в пути
-        # for time_arrived_florian
-        self.delay_mu = delay_mu
-        self.delay_sigma = delay_sigma
+        
+        self.delay_mu = delay_mu       # additional delays like weather
+        self.delay_sigma = delay_sigma # do not currently affect anything
 
 class Strategy:
     def __init__(self, labels, freqs, a_set):
@@ -59,7 +56,7 @@ class PriorityQueue:
 
     def _remove_entry(self, key):
         entry = self.entry_finder.pop(key)
-        entry[-1] = 'REMOVED'  # Mark as removed
+        entry[-1] = 'REMOVED'
 
     def pop(self):
         while self.heap:
@@ -71,7 +68,7 @@ class PriorityQueue:
         return None, None
 
     def update(self, link, priority):
-        self.push(link, priority)  # Since push removes old if exists
+        self.push(link, priority)
         
 class PriorityQueue2:
     def __init__(self):
@@ -91,7 +88,7 @@ class PriorityQueue2:
 
     def _remove_entry(self, key):
         entry = self.entry_finder.pop(key)
-        entry[-1] = 'REMOVED'  # Mark as removed
+        entry[-1] = 'REMOVED'
 
     def pop(self):
         while self.heap:
@@ -106,20 +103,16 @@ class PriorityQueue2:
         self.push(link, priority1, priority2)
 
 def convert_time(time_str):
-    """Преобразование времени из GTFS формата"""
     hours_converted = int(time_str[:2]) % 24
     return "{:02d}:".format(hours_converted) + time_str[3:]
 
 def parse_gtfs_limited(directory, limit=100):
-    """Парсинг GTFS данных с ограничением количества записей"""
-    # Read files
     stops_path = os.path.join(directory, 'stops.txt')
     stop_times_path = os.path.join(directory, 'stop_times.txt')
     trips_path = os.path.join(directory, 'trips.txt')
     routes_path = os.path.join(directory, 'routes.txt')
     calendar_path = os.path.join(directory, 'calendar.txt')
 
-    # Read stops (first 10000)
     all_stops = set()
     with open(stops_path, 'r') as f:
         reader = csv.DictReader(f)
@@ -128,10 +121,8 @@ def parse_gtfs_limited(directory, limit=100):
             if i == 0 or i == 1000:
                 print(row['stop_id'])
 
-    # Read routes, trips, calendar to determine active services (for Dec 17, 2025 - Wednesday)
-    # Assume start_date, end_date in YYYYMMDD, wednesday=1
     active_services = set()
-    date_str = '20251217'  # YYYYMMDD for Dec 17, 2025
+    date_str = '20251217'  # Dec 17, 2025
     weekday = 'wednesday'
     with open(calendar_path, 'r') as f:
         reader = csv.DictReader(f)
@@ -141,7 +132,6 @@ def parse_gtfs_limited(directory, limit=100):
             if start <= date_str <= end and row[weekday] == '1':
                 active_services.add(row['service_id'])
 
-    # Filter trips by active services
     active_trips = {}
     with open(trips_path, 'r') as f:
         reader = csv.DictReader(f)
@@ -149,7 +139,6 @@ def parse_gtfs_limited(directory, limit=100):
             if row['service_id'] in active_services:
                 active_trips[row['trip_id']] = row['route_id']
 
-    # Read stop_times, build links (first 10000)
     stop_times = {}
     with open(stop_times_path, 'r') as f:
         reader = csv.DictReader(f)
@@ -176,30 +165,22 @@ def calculate_links(stop_times, active_trips, all_stops):
             from_node = current['stop_id']
             to_node = next_stop['stop_id']
             
-            # Проверяем, что обе остановки присутствуют в all_stops
             if from_node not in all_stops or to_node not in all_stops:
                 continue
                 
-            # Parse times HH:MM:SS to minutes
             dep_time = datetime.strptime(convert_time(current['departure_time']), '%H:%M:%S')
             arr_time = datetime.strptime(convert_time(next_stop['arrival_time']), '%H:%M:%S')
-            mean_travel_time = (arr_time - dep_time).total_seconds() / 60.0  # minutes
+            mean_travel_time = (arr_time - dep_time).total_seconds() / 60.0 # minutes
 
-            # Headway: Need to calculate per route at from_node
-            headway = 0.0  # Set actual later
+            headway = 0.0 # sets actual headway later
 
-            # В реальной реализации нужно рассчитать std_travel_time на основе исторических данных
-            # Для примера используем фиксированное значение
-            std_travel_time = mean_travel_time * 0.2  # 20% от среднего времени
+            std_travel_time = mean_travel_time * 0.2  # dumb assumption
             link = Link(from_node, to_node, route_id, mean_travel_time, headway, mean_travel_time,  std_travel_time)
             all_links.append(link)
 
     return all_links
 
 def calculate_headways(stop_times, active_trips, all_links):
-    """Расчет интервалов движения"""
-    
-    # Calculate headways: For each route, stop, collect departure times, sort, avg diff
     departures = {}  # (route_id, stop_id) -> list of dep_times in seconds
     for trip_id, times in tqdm(stop_times.items(), desc="Processing trips for headways"):
         route_id = active_trips[trip_id]
@@ -216,12 +197,11 @@ def calculate_headways(stop_times, active_trips, all_links):
         deps = sorted(departures[key])
         if len(deps) > 1:
             diffs = [deps[i+1] - deps[i] for i in range(len(deps)-1)]
-            avg_headway = sum(diffs) / len(diffs) / 60.0  # minutes
+            avg_headway = sum(diffs) / len(diffs) / 60.0 # minutes
             departures[key] = avg_headway
         else:
-            departures[key] = 0.0  # or infinite
+            departures[key] = 0.0
 
-    # Assign headways to links (headway at from_node for route)
     for link in tqdm(all_links, desc="Assigning headways"):
         key = (link.route_id, link.from_node)
         link.headway = departures.get(key, 0.0)
@@ -233,11 +213,8 @@ from collections import defaultdict, deque
 def find_connected_od_pair_with_min_hops(all_links, min_hops=10, max_total_nodes=10000):
     """
     Находит первую пару (origin, destination), для которой кратчайший путь
-    содержит хотя бы `min_hops` рёбер (т.е. расстояние >= min_hops).
-    
-    Возвращает (origin, destination) или (None, None), если не найдено.
+    содержит хотя бы `min_hops` рёбер.
     """
-    # Строим направленный граф
     graph = defaultdict(list)
     nodes = set()
     for link in all_links:
@@ -251,9 +228,7 @@ def find_connected_od_pair_with_min_hops(all_links, min_hops=10, max_total_nodes
     node_list = list(nodes)
     total_checked = 0
 
-    # Перебираем origin в порядке списка (можно добавить random.shuffle для разнообразия)
     for origin in node_list:
-        # BFS от origin с подсчётом расстояний в рёбрах
         dist = {origin: 0}
         queue = deque([origin])
         
@@ -261,11 +236,9 @@ def find_connected_od_pair_with_min_hops(all_links, min_hops=10, max_total_nodes
             current = queue.popleft()
             current_dist = dist[current]
             
-            # Если уже превысили min_hops, можно остановиться
             if current_dist >= min_hops and current != origin:
                 return origin, current
 
-            # Ограничиваем глубину поиска разумно
             if current_dist >= min_hops + 5:
                 continue
 
@@ -285,7 +258,6 @@ def get_all_origins_reaching_destination(all_links, destination):
     """
     Строит обратный граф и находит все узлы, из которых можно добраться до destination.
     """
-    # Строим ОБРАТНЫЙ граф: to_node -> [from_node, ...]
     rev_graph = defaultdict(list)
     all_nodes = set()
     for link in all_links:
@@ -293,7 +265,6 @@ def get_all_origins_reaching_destination(all_links, destination):
         all_nodes.add(link.from_node)
         all_nodes.add(link.to_node)
 
-    # BFS из destination по обратному графу
     reachable = set()
     queue = deque([destination])
     reachable.add(destination)
@@ -313,9 +284,8 @@ def calculate_flow_volumes(all_links, all_stops, optimal_strategy, od_matrix, de
         if destination in od_matrix[origin]:
             node_volumes[origin] += od_matrix[origin][destination]
             node_volumes[destination] += od_matrix[origin][destination]
-    node_volumes[destination] *= -1 # Как в оригинале
+    node_volumes[destination] *= -1
 
-    # Инициализация объемов для связей
     volumes_links = {}
     for link in all_links:
         if link.from_node not in volumes_links:
@@ -356,25 +326,22 @@ def compute_average_volume(volumes):
     avg_volume = total_volume / count if count > 0 else 0.0
     return avg_volume, total_volume, count
 
-
 import os
 import matplotlib.pyplot as plt
 import networkx as nx
 from matplotlib.lines import Line2D
 
-def visualize_volumes(all_links, all_stops, volumes_orig, volumes_mod, 
+def visualize_volumes(all_links, all_stops, volumes_orig, volumes_mod,
                       od_matrix, destination, T=60, visualization_dir="visual"):
     os.makedirs(visualization_dir, exist_ok=True)
 
     G = nx.DiGraph()
 
-    # Добавляем узлы и рёбра
     for stop in all_stops:
         G.add_node(stop)
     for link in all_links:
         G.add_edge(link.from_node, link.to_node, route=link.route_id, cost=link.travel_cost)
 
-    # Origins — узлы с положительным спросом к destination
     origins = set()
     for orig, dest_dict in od_matrix.items():
         if destination in dest_dict and dest_dict[destination] > 0:
@@ -383,7 +350,6 @@ def visualize_volumes(all_links, all_stops, volumes_orig, volumes_mod,
     plt.figure(figsize=(16, 12))
     pos = nx.spring_layout(G, seed=42, k=0.9, iterations=60)
 
-    # Цвета узлов
     node_colors = []
     for node in G.nodes():
         if node == destination:
@@ -393,7 +359,6 @@ def visualize_volumes(all_links, all_stops, volumes_orig, volumes_mod,
         else:
             node_colors.append('lightblue')
 
-    # Рисуем узлы
     nx.draw_networkx_nodes(G, pos,
                            node_color=node_colors,
                            node_size=1000,
@@ -401,7 +366,6 @@ def visualize_volumes(all_links, all_stops, volumes_orig, volumes_mod,
                            linewidths=2,
                            edgecolors='black')
 
-    # Рисуем рёбра
     nx.draw_networkx_edges(G, pos,
                            edge_color='gray',
                            arrows=True,
@@ -409,8 +373,7 @@ def visualize_volumes(all_links, all_stops, volumes_orig, volumes_mod,
                            width=2,
                            alpha=0.7)
 
-    # === Рисуем подписи узлов отдельно по группам ===
-    # 1. Промежуточные узлы (чёрный текст)
+
     intermediate_nodes = [node for node in G.nodes() if node != destination and node not in origins]
     if intermediate_nodes:
         nx.draw_networkx_labels(G, pos,
@@ -419,7 +382,6 @@ def visualize_volumes(all_links, all_stops, volumes_orig, volumes_mod,
                                 font_weight='bold',
                                 font_color='black')
 
-    # 2. Origins (белый текст на зелёном)
     if origins:
         nx.draw_networkx_labels(G, pos,
                                 labels={node: node for node in origins},
@@ -427,14 +389,12 @@ def visualize_volumes(all_links, all_stops, volumes_orig, volumes_mod,
                                 font_weight='bold',
                                 font_color='white')
 
-    # 3. Destination (белый текст на красном)
     nx.draw_networkx_labels(G, pos,
                             labels={destination: destination},
                             font_size=11,
                             font_weight='bold',
                             font_color='white')
 
-    # Подписи рёбер — объёмы потоков
     edge_labels = {}
     for from_node in volumes_orig.links:
         for to_node in volumes_orig.links[from_node]:
@@ -450,7 +410,6 @@ def visualize_volumes(all_links, all_stops, volumes_orig, volumes_mod,
                                  font_color='darkred',
                                  bbox=dict(facecolor='white', edgecolor='none', alpha=0.8, pad=3))
 
-    # Легенда
     legend_elements = [
         Line2D([0], [0], marker='o', color='w', label='Пункт назначения',
                markerfacecolor='red', markersize=12, markeredgecolor='black'),
@@ -461,7 +420,6 @@ def visualize_volumes(all_links, all_stops, volumes_orig, volumes_mod,
     ]
     plt.legend(handles=legend_elements, loc='upper left', fontsize=12, framealpha=0.9)
 
-    # Заголовок
     plt.title(f"Сравнение пассажиропотоков: Original vs Risk-Averse модель\n"
               f"Destination = {destination} | Deadline T = {T} мин",
               fontsize=15, pad=30)
