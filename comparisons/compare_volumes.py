@@ -15,10 +15,14 @@ def parse_sample_data():
 
     links_data = [
         ('Metro_Center', 'Downtown', 'M1', 10, 2, 5),
-        ('Res1', 'Mid1', 'B1', 8, 15, 10),
+
+        ('Res1', 'Mid1', 'B1', 8, 15, 10),  # mean=8, std=15 (high risk)
         ('Mid1', 'Downtown', 'B1', 12, 15, 10),
-        ('Res3', 'Downtown', 'X2', 15, 20, 20),
+
+        ('Res3', 'Downtown', 'X2', 15, 20, 20),  # fast mean=15, high std=20
+
         ('Res3', 'Metro_Center', 'M2', 18, 2, 5),
+
         ('Metro_Center', 'Park', 'WALK', 6, 0, 0),
         ('Park', 'Downtown', 'WALK', 6, 0, 0),
 
@@ -57,7 +61,7 @@ def compare_approaches(T=60):
     directory = "improved-gtfs-moscow-official"
     all_links, all_stops = parse_gtfs(directory, 15)
 
-    print("🔍 Ищем пару связанных остановок...")
+    print("Ищем пару связанных остановок...")
     origin, destination = find_connected_od_pair_with_min_hops(all_links)
 
     if origin is None or destination is None:
@@ -76,10 +80,7 @@ def compare_approaches(T=60):
             od_matrix[origin] = {destination: demand}
 
     print(f"OD-матрица создана: {len(od_matrix)} origin → {destination} (случайный спрос)")
-    # result = compute_sf(all_links, all_stops, destination, od_matrix)    
-    
-    
-    
+    # result = compute_sf(all_links, all_stops, destination, od_matrix)
     
     # all_links, all_stops = parse_sample_data()
     strategy_orig = find_optimal_strategy(all_links, all_stops, destination)
@@ -97,12 +98,9 @@ def compare_approaches(T=60):
             v_mod = volumes_mod.links.get(from_node, {}).get(to_node, 0.0)
             print(f"Link ({from_node} -> {to_node}): orig={v_orig}, mod={v_mod}, diff={v_mod - v_orig}")
 
-    # Вывод
     print("\nСредний объём на рёбрах:")
     print(f"Original (только активные):  среднее = {avg_orig_A:.2f}, всего рёбер = {count_orig_A}", total_orig_A)
     print(f"Modified (только активные): среднее = {avg_mod_A:.2f}, всего рёбер = {count_mod_A}", total_mod_A)
-
-    print(f"Изменение среднего (активные): {avg_mod_A - avg_orig_A:+.2f}")
         
 # compare_approaches(20)
 
