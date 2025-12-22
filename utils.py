@@ -345,8 +345,8 @@ def calculate_flow_volumes(all_links, all_stops, optimal_strategy, od_matrix, de
     for origin in od_matrix:
         if destination in od_matrix[origin]:
             node_volumes[origin] += od_matrix[origin][destination]
-            node_volumes[destination] += od_matrix[origin][destination]
-    node_volumes[destination] *= -1
+            # node_volumes[destination] += od_matrix[origin][destination]
+    # node_volumes[destination] *= -1
 
     volumes_links = {}
     for link in all_links:

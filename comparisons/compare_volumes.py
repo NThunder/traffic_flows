@@ -53,7 +53,7 @@ def parse_sample_data():
         mean_time = sum(data['mean_time']) / len(data['mean_time'])
         std_time = sum(data['std_time']) / len(data['std_time'])
         headway = data['headway']
-        link = Link(from_node=from_node, to_node=to_node, route_id=route_id, travel_cost=mean_time, headway=headway, mean_travel_time=mean_time)
+        link = Link(from_node=from_node, to_node=to_node, route_id=route_id, travel_cost=mean_time, headway=headway)
         all_links.append(link)
     
     return all_links, all_stops

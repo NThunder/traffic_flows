@@ -95,7 +95,6 @@ def parse_gtfs(directory, limit=10000):
     stop_times, active_trips, all_stops, stop_names, route_names = parse_gtfs_limited(directory, limit)
     all_links = calculate_links(stop_times, active_trips, all_stops)
     all_links = calculate_headways(stop_times, active_trips, all_links)
-    
 
     return all_links, all_stops
 
