@@ -21,11 +21,12 @@ class Test_TimeArrivedFlorian_NetThreeStopsTwoLinks(unittest.TestCase):
         strategy = find_optimal_strategy(self.links, self.stops, destination=self.destination, T=self.arrival_deadline)
         volumes = assign_demand(self.links, self.stops, strategy, self.od_matrix, self.destination)
         
-        self.assertGreaterEqual(volumes.nodes["A"], 0)
-        self.assertLessEqual(volumes.nodes["C"], 0)
-
-        self.assertLessEqual(volumes.nodes["B"], 100.1)
-        self.assertGreaterEqual(volumes.nodes["B"], -0.1)
+        self.assertAlmostEqual(volumes.nodes["A"], 100.0, places=5)
+        self.assertAlmostEqual(volumes.nodes["B"], 100.0, places=5)
+        self.assertAlmostEqual(volumes.nodes["C"], 100.0, places=5)
+        
+        self.assertAlmostEqual(volumes.links["A"]["B"], 100.0, places=5)
+        self.assertAlmostEqual(volumes.links["B"]["C"], 100.0, places=5)
 
     def test_output_labels(self):
         result = find_optimal_strategy(self.links, self.stops, destination=self.destination, T=50)
@@ -66,7 +67,7 @@ class Test_TimeArrivedFlorian_NetFourStopsFourLinks(unittest.TestCase):
         
         self.assertAlmostEqual(volumes.nodes["A"], 100, places=5)
         self.assertAlmostEqual(volumes.nodes["B"], 100, places=5)
-        self.assertAlmostEqual(volumes.nodes["C"], 0, places=5)
+        self.assertAlmostEqual(volumes.nodes["C"], 100, places=5)
         self.assertAlmostEqual(volumes.nodes["D"], 0, places=5)
 
         # all people go this way

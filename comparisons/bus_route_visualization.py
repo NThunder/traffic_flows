@@ -159,12 +159,10 @@ def create_bus_route_visualization(original_result, prob_result, all_stops, orig
     
     # Для построения маршрута используем стратегию, у которой больше остановок на пути или обе стратегии
     path_stops_original = get_path_stops(original_result.strategy, origin, destination)
-    path_stops_prob = get_path_stops(prob_result.strategy, origin, destination)
     
     # Объединяем остановки из обоих маршрутов, сохраняя порядок
     all_path_stops = set()
     all_path_stops.update(path_stops_original)
-    all_path_stops.update(path_stops_prob)
     
     # stops_to_show = get_stops_to_show(all_path_stops, path_stops_original, path_stops_prob, original_result, prob_result, origin, destination)
     # show just original
@@ -198,10 +196,7 @@ def create_bus_route_visualization(original_result, prob_result, all_stops, orig
     for link in original_result.strategy.a_set:
         if link.from_node in stops_to_show and link.to_node in stops_to_show:
             routes_used.add(link.route_id)
-    
-    for link in prob_result.strategy.a_set:
-        if link.from_node in stops_to_show and link.to_node in stops_to_show:
-            routes_used.add(link.route_id)
+            break
     
     # Преобразуем route_id в русские названия маршрутов, если доступны
     if route_names:
@@ -264,7 +259,7 @@ def create_bus_route_visualization(original_result, prob_result, all_stops, orig
             ax.get_xticklabels()[i].set_weight('bold')
             ax.get_xticklabels()[i].set_weight('bold')
     
-    fig.legend(handles=legend_elements, loc='upper center', bbox_to_anchor=(0.5, 0.95), ncol=2)
+    # fig.legend(handles=legend_elements, loc='upper center', bbox_to_anchor=(0.5, 0.95), ncol=2)
     
     plt.tight_layout(rect=[0, 0, 1, 0.93])  # Делаем место для верхней легенды
     plt.savefig('gtfs_comparison_results.png', dpi=300, bbox_inches='tight')

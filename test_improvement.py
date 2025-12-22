@@ -4,7 +4,7 @@
 Проверяет, что внутри-маршрутные перемещения не добавляют лишнее время ожидания
 """
 from utils import Link
-from algos.florian import compute_sf
+from algos.florian import compute_sf_improved
 
 def test_same_route_improvement():
     """
@@ -16,17 +16,16 @@ def test_same_route_improvement():
     
     # Создаем связи для маршрута A -> B -> C на одном маршруте
     links = [
-        Link("A", "B", "route1", 10, 15),  # 10 минут в пути, интервал 15 мин
-        Link("B", "C", "route1", 15, 15),  # 15 минут в пути, интервал 15 мин
-        # Добавим альтернативный маршрут от A к C для сравнения
-        Link("A", "C", "route2", 30, 5),  # 30 минут в пути, интервал 5 мин
+        Link("A", "B", "route1", 5, 15),  # 10 минут в пути, интервал 15 мин
+        Link("B", "C", "route1", 5, 15),  # 15 минут в пути, интервал 15 мин
+        Link("A", "C", "route2", 30, 5),   # 30 минут в пути, интервал 5 мин
     ]
     
     stops = {"A", "B", "C"}
     od_matrix = {"A": {"C": 100}}  # 100 пассажиров из A в C
     destination = "C"
     
-    result = compute_sf(links, stops, destination, od_matrix)
+    result = compute_sf_improved(links, stops, destination, od_matrix)
     
     print(f"Обобщенные затраты из A в C: {result.strategy.labels['A']}")
     print(f"Обобщенные затраты в C (должны быть 0): {result.strategy.labels['C']}")

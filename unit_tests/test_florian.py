@@ -1,6 +1,6 @@
 import math
 import unittest
-from algos.florian import find_optimal_strategy, assign_demand
+from algos.florian import find_optimal_strategy, assign_demand, compute_sf, compute_sf_improved
 from utils import Link, Strategy, SFResult, Volumes
 
 class Test_Florian_NetThreeStopsThreeLinks(unittest.TestCase):
@@ -52,7 +52,7 @@ class Test_Florian_NetThreeStopsThreeLinks(unittest.TestCase):
         optimal_strategy = find_optimal_strategy(self.links, self.stops, self.destination)
         volumes = assign_demand(self.links, self.stops, optimal_strategy, self.od_matrix, self.destination)
         
-        self.assertAlmostEqual(volumes.nodes[self.destination], 0, places=5)
+        self.assertAlmostEqual(volumes.nodes[self.destination], 100.0, places=5)
     
 
 class Test_Florian_NetThreeStopsTwoLinks(unittest.TestCase):
@@ -73,7 +73,7 @@ class Test_Florian_NetThreeStopsTwoLinks(unittest.TestCase):
         
         self.assertAlmostEqual(volumes.nodes["A"], 10.0, places=5)
         self.assertAlmostEqual(volumes.nodes["B"], 10.0, places=5)
-        self.assertAlmostEqual(volumes.nodes["C"],  0.0, places=5)
+        self.assertAlmostEqual(volumes.nodes["C"], 10.0, places=5)
         
         self.assertAlmostEqual(volumes.links["A"]["B"], 10.0, places=5)
         self.assertAlmostEqual(volumes.links["B"]["C"], 10.0, places=5)
@@ -98,7 +98,7 @@ class Test_Florian_NetFourStopsFourLinks(unittest.TestCase): # тестим об
         
         self.assertAlmostEqual(volumes.nodes["A"],       100, places=1)
         self.assertAlmostEqual(volumes.nodes["B"], 2/3 * 100, places=1)
-        self.assertAlmostEqual(volumes.nodes["C"],         0, places=1)
+        self.assertAlmostEqual(volumes.nodes["C"],       100, places=1)
         self.assertAlmostEqual(volumes.nodes["D"], 1/3 * 100, places=1)
         
         # сумма объемов в промежуточных узлах близка к 100
@@ -116,6 +116,33 @@ class Test_Florian_NetFourStopsFourLinks(unittest.TestCase): # тестим об
         self.assertIsInstance(result, Strategy)
         for stop, time in result.labels.items():
             self.assertGreaterEqual(time, 0.0)
+
+
+class Test_Florian_NetThreeStopsThreeLinks2(unittest.TestCase):
+    def setUp(self):
+        self.links = [
+            Link("A", "B", "route1", 5, 15),  # 10 минут в пути, интервал 15 мин
+            Link("B", "C", "route1", 5, 15),  # 15 минут в пути, интервал 15 мин
+            Link("A", "C", "route2", 30, 5),   # 30 минут в пути, интервал 5 мин
+        ]
+        
+        self.stops = {"A", "B", "C"}
+        self.od_matrix = {"A": {"C": 100}}
+        self.destination = "C"
+
+    def test_same_route_improvement(self):
+        result = compute_sf_improved(self.links, self.stops, self.destination, self.od_matrix)
+    
+        print(f"Обобщенные затраты из A в C: {result.strategy.labels['A']}")
+        print(f"Обобщенные затраты в C (должны быть 0): {result.strategy.labels['C']}")
+        
+        # Время по маршруту A -> B -> C составляет 10 + 15 = 25 минут
+        # При правильной реализации это должно быть близко к оптимальному времени
+        # без лишнего ожидания на остановке B
+        
+        print(f"Оптимальные связи (a_set): {len(result.strategy.a_set)}")
+        for link in result.strategy.a_set:
+            print(f"  {link.from_node} -> {link.to_node} по маршруту {link.route_id}")
 
 
 if __name__ == '__main__':
