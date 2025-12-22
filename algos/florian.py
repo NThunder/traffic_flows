@@ -4,13 +4,30 @@ import math
 # Оригинальный Spiess-Florian (минимизация ожидаемого времени)
 
 def find_optimal_strategy(all_links, all_stops, destination):
+    """
+    Улучшенная версия алгоритма Spiess-Florian с учетом внутри-маршрутных перемещений.
+    Основное изменение: при перемещении по одному и тому же маршруту не добавляется
+    время ожидания, в отличие от пересадок между маршрутами.
+    """
     if VERBOSE:
         print("Initialization")
-    u = {stop: 0.0 if stop == destination else MATH_INF for stop in all_stops}
-    f = {stop: 0.0 for stop in all_stops}
+    
+    # Для каждой остановки будем хранить минимальные затраты для каждого маршрута
+    # u[stop] = {route_id: min_cost, ...} - минимальные затраты до цели, находясь на данном маршруте
+    u = {}
+    f = {}  # частоты для каждого маршрута в узле
+    
+    for stop in all_stops:
+        u[stop] = {}
+        f[stop] = {}
 
-    overline_a = []
+    # Устанавливаем конечную точку
+    u[destination] = {None: 0.0}  # специальное значение для конечной точки
+    f[destination] = {None: 0.0}
 
+    overline_a = []  # привлекательное множество связей
+
+    # Группируем связи по конечной остановке
     links_by_to_node = {}
     for link in all_links:
         if link.to_node in all_stops and link.from_node in all_stops:
@@ -18,10 +35,13 @@ def find_optimal_strategy(all_links, all_stops, destination):
                 links_by_to_node[link.to_node] = []
             links_by_to_node[link.to_node].append(link)
 
+    # Инициализируем приоритетную очередь
     pq = PriorityQueue()
     for link in all_links:
         if link.to_node in all_stops:
-            pq.push(link, u[link.to_node] + link.travel_cost)
+            # Берем минимальные затраты из конечной остановки этой связи
+            min_cost_to_dest = min(u[link.to_node].values()) if u[link.to_node] and u[link.to_node].values() else MATH_INF
+            pq.push(link, min_cost_to_dest + link.travel_cost)
 
     while True:
         link, priority = pq.pop()
@@ -29,55 +49,98 @@ def find_optimal_strategy(all_links, all_stops, destination):
             break
 
         a = link
-        i = a.from_node
-        j = a.to_node
+        i = a.from_node  # текущая остановка
+        j = a.to_node    # следующая остановка
+        route_id = a.route_id  # маршрут, которым мы едем
         
         if i not in all_stops or j not in all_stops:
             continue
-            
-        sum_uc = u[j] + a.travel_cost
 
-        if u[i] < sum_uc:
+        # Проверяем, можем ли мы улучшить значение для узла i на маршруте route_id
+        # Находим минимальные затраты до цели, находясь на маршруте route_id в узле j
+        cost_on_route_at_j = MATH_INF
+        if j in u and route_id in u[j]:
+            cost_on_route_at_j = u[j][route_id]
+        elif j in u and u[j]:  # если для конкретного маршрута нет данных, берем минимальные
+            cost_on_route_at_j = min(u[j].values())
+        elif j == destination:
+            cost_on_route_at_j = 0.0
+        
+        if cost_on_route_at_j < MATH_INF:
+            # Это перемещение по тому же маршруту - добавляем только время в пути
+            cost_via_a = cost_on_route_at_j + a.travel_cost
+        elif j == destination:
+            # Если это конечная остановка
+            cost_via_a = a.travel_cost
+        else:
+            # Невозможно добраться до цели из узла j
             continue
 
-        if VERBOSE:
-            print(f"Process: a = ({i}, {j})")
-            print(f"  u_i < u_j + c_a : {u[i]} < {u[j]} + {a.travel_cost} - FALSE")
+        # Проверяем, улучшит ли это наше значение для узла i на маршруте route_id
+        current_cost_at_i_for_route = u[i].get(route_id, MATH_INF)
+        
+        if cost_via_a < current_cost_at_i_for_route:
+            # Обновляем значение
+            u[i][route_id] = cost_via_a
+            
+            # Обновляем частоту для этого маршрута в узле i
+            freq = INFINITE_FREQUENCY if a.headway <= 0 else 1 / a.headway
+            f[i][route_id] = freq
 
-        freq = INFINITE_FREQUENCY if a.headway <= 0 else 1 / a.headway
+            if VERBOSE:
+                print(f"Update: node {i}, route {route_id}, cost = {cost_via_a}")
 
-        if VERBOSE:
-            print(f"  f_a = {freq}")
+            # Добавляем связь в привлекательное множество
+            overline_a.append(a)
 
-        numerator_part = f[i] * u[i]
-        if math.isnan(numerator_part):
-            numerator_part = ALPHA
-        numerator_part2 = freq * (u[j] + a.travel_cost)
-        if math.isnan(numerator_part2):
-            numerator_part2 = ALPHA
-        numerator = numerator_part + numerator_part2
-        denominator = f[i] + freq
-        u[i] = numerator / denominator if denominator != 0 else ALPHA
-        f[i] = denominator
+            # Обновляем приоритеты для связей, входящих в узел i
+            if i in links_by_to_node:
+                for prev_link in links_by_to_node[i]:
+                    if prev_link.to_node in all_stops and prev_link.from_node in all_stops:
+                        # Рассчитываем новый приоритет для связи prev_link
+                        min_cost_at_i = min(u[i].values()) if u[i] and u[i].values() else MATH_INF
+                        new_priority = min_cost_at_i + prev_link.travel_cost
+                        pq.update(prev_link, new_priority)
 
-        if VERBOSE:
-            print(f"  u_i = {u[i]}")
-            print(f"  f_i = {f[i]}")
-            print(f"  overlineA += ({i}, {j})")
+        # Также проверяем возможность пересадки - когда пассажир прибывает в узел i на одном маршруте
+        # и может пересесть на маршрут a.route_id
+        for prev_route in u[j]:
+            if prev_route != route_id and prev_route is not None:
+                # Есть возможность пересесть с маршрута prev_route на route_id в узле i
+                cost_on_prev_route_at_j = u[j][prev_route]
+                
+                # При пересадке нужно учитывать время ожидания
+                wait_time = a.headway / 2.0 if a.headway > 0 else 0  # среднее время ожидания
+                total_cost_if_transfer = cost_on_prev_route_at_j + wait_time + a.travel_cost
+                
+                if total_cost_if_transfer < current_cost_at_i_for_route:
+                    u[i][route_id] = total_cost_if_transfer
+                    f[i][route_id] = freq
+                    
+                    if VERBOSE:
+                        print(f"Transfer improvement: from route {prev_route} to {route_id} at node {i}")
+                    
+                    # Обновляем приоритеты для связей, входящих в узел i
+                    if i in links_by_to_node:
+                        for prev_link in links_by_to_node[i]:
+                            if prev_link.to_node in all_stops and prev_link.from_node in all_stops:
+                                min_cost_at_i = min(u[i].values()) if u[i] and u[i].values() else MATH_INF
+                                new_priority = min_cost_at_i + prev_link.travel_cost
+                                pq.update(prev_link, new_priority)
 
-        overline_a.append(a)
-
-        if i in links_by_to_node:
-            for update_link in links_by_to_node[i]:
-                if update_link.to_node in all_stops and update_link.from_node in all_stops:
-                    pq.update(update_link, u[i] + update_link.travel_cost)
-
-        if VERBOSE:
-            print("Node labels:")
-            for s in all_stops:
-                print(f"{s} -> (u_i, f_i) = ({u[s]}, {f[s]})")
-
-    return Strategy(u, f, overline_a)
+    # Преобразуем результат в старый формат для совместимости
+    # Берем минимальные затраты для каждой остановки по всем маршрутам
+    final_u = {}
+    final_f = {}
+    for stop in all_stops:
+        if stop in u and u[stop] and u[stop].values():
+            final_u[stop] = min(u[stop].values())
+            final_f[stop] = sum(f[stop].values()) if stop in f else 0.0
+        else:
+            final_u[stop] = MATH_INF
+            final_f[stop] = 0.0
+    
+    return Strategy(final_u, final_f, overline_a)
 
 def assign_demand(all_links, all_stops, optimal_strategy, od_matrix, destination):
     # Sort a_set by descending (labels[to] + travel_cost)
