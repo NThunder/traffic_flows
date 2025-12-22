@@ -101,25 +101,27 @@ def parse_gtfs(directory, limit=10000):
 
 def find_optimal_strategy_improved(all_links, all_stops, destination):
     """
-    Улучшенная версия алгоритма Spiess-Florian с учетом внутри-маршрутных перемещений.
-    Основное изменение: при перемещении по одному и тому же маршруту не добавляется
-    время ожидания, в отличие от пересадок между маршрутами.
+    Улучшенная версия алгоритма Spiess-Florian.
+    Основное изменение: при движении по одному и тому же маршруту (внутри-маршрутное перемещение)
+    не добавляется время ожидания, в отличие от пересадок между маршрутами.
+    
+    Используем подход с состояниями: (узел, маршрут, флаг_ожидания)
     """
     if VERBOSE:
         print("Initialization")
     
-    # Для каждой остановки будем хранить минимальные затраты для каждого маршрута
-    # u[stop] = {route_id: min_cost, ...} - минимальные затраты до цели, находясь на данном маршруте
+    # Для каждой остановки будем хранить минимальные затраты для каждого маршрута и состояния ожидания
+    # u[stop] = {(route_id, is_waiting): min_cost, ...}
     u = {}
-    f = {}  # частоты для каждого маршрута в узле
+    f = {}  # частоты для каждого состояния в узле
     
     for stop in all_stops:
         u[stop] = {}
         f[stop] = {}
 
     # Устанавливаем конечную точку
-    u[destination] = {None: 0.0}  # специальное значение для конечной точки
-    f[destination] = {None: 0.0}
+    u[destination] = {('END', False): 0.0}  # специальное состояние для конечной точки
+    f[destination] = {('END', False): 0.0}
 
     overline_a = []  # привлекательное множество связей
 
@@ -152,80 +154,64 @@ def find_optimal_strategy_improved(all_links, all_stops, destination):
         if i not in all_stops or j not in all_stops:
             continue
 
-        # Проверяем, можем ли мы улучшить значение для узла i на маршруте route_id
-        # Находим минимальные затраты до цели, находясь на маршруте route_id в узле j
-        cost_on_route_at_j = MATH_INF
-        if j in u and route_id in u[j]:
-            cost_on_route_at_j = u[j][route_id]
-        elif j in u and u[j]:  # если для конкретного маршрута нет данных, берем минимальные
-            cost_on_route_at_j = min(u[j].values())
-        elif j == destination:
-            cost_on_route_at_j = 0.0
-        
-        if cost_on_route_at_j < MATH_INF:
-            # Это перемещение по тому же маршруту - добавляем только время в пути
-            cost_via_a = cost_on_route_at_j + a.travel_cost
-        elif j == destination:
-            # Если это конечная остановка
-            cost_via_a = a.travel_cost
-        else:
-            # Невозможно добраться до цели из узла j
-            continue
-
-        # Проверяем, улучшит ли это наше значение для узла i на маршруте route_id
-        current_cost_at_i_for_route = u[i].get(route_id, MATH_INF)
-        
-        if cost_via_a < current_cost_at_i_for_route:
-            # Обновляем значение
-            u[i][route_id] = cost_via_a
-            
-            # Обновляем частоту для этого маршрута в узле i
-            freq = INFINITE_FREQUENCY if a.headway <= 0 else 1 / a.headway
-            f[i][route_id] = freq
-
-            if VERBOSE:
-                print(f"Update: node {i}, route {route_id}, cost = {cost_via_a}")
-
-            # Добавляем связь в привлекательное множество
-            overline_a.append(a)
-
-            # Обновляем приоритеты для связей, входящих в узел i
-            if i in links_by_to_node:
-                for prev_link in links_by_to_node[i]:
-                    if prev_link.to_node in all_stops and prev_link.from_node in all_stops:
-                        # Рассчитываем новый приоритет для связи prev_link
-                        min_cost_at_i = min(u[i].values()) if u[i] and u[i].values() else MATH_INF
-                        new_priority = min_cost_at_i + prev_link.travel_cost
-                        pq.update(prev_link, new_priority)
-
-        # Также проверяем возможность пересадки - когда пассажир прибывает в узел i на одном маршруте
-        # и может пересесть на маршрут a.route_id
-        for prev_route in u[j]:
-            if prev_route != route_id and prev_route is not None:
-                # Есть возможность пересесть с маршрута prev_route на route_id в узле i
-                cost_on_prev_route_at_j = u[j][prev_route]
+        # Обрабатываем все возможные состояния в узле j
+        for (j_route, j_is_waiting) in u[j]:
+            if j_route == 'END':
+                # Это конечная точка
+                cost_on_route_at_j = u[j][(j_route, j_is_waiting)]
+                cost_via_a = a.travel_cost  # просто время в пути
+                # Обновляем узел i как начальное ожидание на маршруте (ожидание нужно)
+                current_cost = u[i].get((route_id, True), MATH_INF)
                 
-                # При пересадке нужно учитывать время ожидания
-                wait_time = a.headway / 2.0 if a.headway > 0 else 0  # среднее время ожидания
-                total_cost_if_transfer = cost_on_prev_route_at_j + wait_time + a.travel_cost
+                if cost_via_a < current_cost:
+                    u[i][(route_id, True)] = cost_via_a
+                    freq = INFINITE_FREQUENCY if a.headway <= 0 else 1 / a.headway
+                    f[i][(route_id, True)] = freq
+                    overline_a.append(a)
+
+            elif j_route == route_id:
+                # Это продолжение поездки на том же маршруте
+                cost_on_route_at_j = u[j][(j_route, j_is_waiting)]
                 
-                if total_cost_if_transfer < current_cost_at_i_for_route:
-                    u[i][route_id] = total_cost_if_transfer
-                    f[i][route_id] = freq
+                if j_is_waiting:
+                    # Пассажир только начинал поездку на маршруте, теперь продолжает без ожидания
+                    cost_via_a = a.travel_cost + cost_on_route_at_j
+                    # Обновляем узел i как продолжение поездки (ожидание не нужно)
+                    current_cost = u[i].get((route_id, False), MATH_INF)
                     
-                    if VERBOSE:
-                        print(f"Transfer improvement: from route {prev_route} to {route_id} at node {i}")
+                    if cost_via_a < current_cost:
+                        u[i][(route_id, False)] = cost_via_a
+                        freq = INFINITE_FREQUENCY if a.headway <= 0 else 1 / a.headway
+                        f[i][(route_id, False)] = freq
+                        overline_a.append(a)
+                else:
+                    # Пассажир уже в поездке на маршруте, продолжаем без ожидания
+                    cost_via_a = a.travel_cost + cost_on_route_at_j
+                    # Обновляем узел i как продолжение поездки (ожидание не нужно)
+                    current_cost = u[i].get((route_id, False), MATH_INF)
                     
-                    # Обновляем приоритеты для связей, входящих в узел i
-                    if i in links_by_to_node:
-                        for prev_link in links_by_to_node[i]:
-                            if prev_link.to_node in all_stops and prev_link.from_node in all_stops:
-                                min_cost_at_i = min(u[i].values()) if u[i] and u[i].values() else MATH_INF
-                                new_priority = min_cost_at_i + prev_link.travel_cost
-                                pq.update(prev_link, new_priority)
+                    if cost_via_a < current_cost:
+                        u[i][(route_id, False)] = cost_via_a
+                        freq = INFINITE_FREQUENCY if a.headway <= 0 else 1 / a.headway
+                        f[i][(route_id, False)] = freq
+                        overline_a.append(a)
+
+            else:
+                # Это пересадка на другой маршрут - добавляем ожидание
+                cost_on_route_at_j = u[j][(j_route, j_is_waiting)]
+                wait_time = a.headway / 2.0 if a.headway > 0 else 0
+                cost_via_a = wait_time + a.travel_cost + cost_on_route_at_j
+                # Обновляем узел i как начальное ожидание на новом маршруте (ожидание нужно)
+                current_cost = u[i].get((route_id, True), MATH_INF)
+                
+                if cost_via_a < current_cost:
+                    u[i][(route_id, True)] = cost_via_a
+                    freq = INFINITE_FREQUENCY if a.headway <= 0 else 1 / a.headway
+                    f[i][(route_id, True)] = freq
+                    overline_a.append(a)
 
     # Преобразуем результат в старый формат для совместимости
-    # Берем минимальные затраты для каждой остановки по всем маршрутам
+    # Берем минимальные затраты для каждой остановки по всем маршрутам и состояниям
     final_u = {}
     final_f = {}
     for stop in all_stops:
