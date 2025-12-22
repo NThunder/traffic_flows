@@ -78,7 +78,7 @@ def compare_approaches(T=60, limit=200000):
     od_matrix = {}
     for origin in origins_reaching_dest:
         if origin != destination:
-            demand = random.uniform(50.0, 500.0)
+            demand = 500 # random.uniform(50.0, 500.0)
             od_matrix[origin] = {destination: demand}
 
     print(f"OD-матрица создана: {len(od_matrix)} origin → {destination} (случайный спрос)")

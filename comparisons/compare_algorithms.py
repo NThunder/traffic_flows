@@ -8,7 +8,7 @@ from tqdm import tqdm
 sys.path.append('.')
 
 from algos.florian import compute_sf, Link as OriginalLink, find_optimal_strategy, assign_demand
-from algos.lateness_prob_florian import compute_sf_with_lateness_prob, Link as ProbLink, parse_sample_data
+from algos.time_arrived_florian import compute_sf as compute_sf_with_time_arrived, Link as ProbLink, parse_sample_data
 
 
 def run_comparison():
@@ -26,7 +26,7 @@ def run_comparison():
     arrival_deadline = 25  # дедлайн в 25 минут
     
     # Вычисляем результаты с помощью модифицированного алгоритма
-    result_lateness_prob = compute_sf_with_lateness_prob(
+    result_lateness_prob = compute_sf_with_time_arrived(
         all_links, all_stops, destination, od_matrix, arrival_deadline
     )
     
@@ -181,7 +181,7 @@ def run_extended_comparison():
     
     for deadline in deadlines:
         # Вычисляем результаты с помощью модифицированного алгоритма
-        prob_result = compute_sf_with_lateness_prob(
+        prob_result = compute_sf_with_time_arrived(
             all_links, all_stops, destination, od_matrix, deadline
         )
         
