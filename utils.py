@@ -13,14 +13,12 @@ VERBOSE = False
 EPSILON = 1e-6
 
 class Link:
-    def __init__(self, from_node, to_node, route_id, travel_cost, headway, mean_travel_time=None):
+    def __init__(self, from_node, to_node, route_id, travel_cost, headway):
         self.from_node = from_node
         self.to_node = to_node
         self.route_id = route_id
         self.travel_cost = travel_cost
         self.headway = headway
-        # Для совместимости с тестами, где используется mean_travel_time
-        self.mean_travel_time = mean_travel_time if mean_travel_time is not None else travel_cost
 
 class Strategy:
     def __init__(self, labels, freqs, a_set):
@@ -347,8 +345,8 @@ def calculate_flow_volumes(all_links, all_stops, optimal_strategy, od_matrix, de
     for origin in od_matrix:
         if destination in od_matrix[origin]:
             node_volumes[origin] += od_matrix[origin][destination]
-            # node_volumes[destination] += od_matrix[origin][destination]
-    # node_volumes[destination] *= -1
+            node_volumes[destination] += od_matrix[origin][destination]
+    node_volumes[destination] *= -1
 
     volumes_links = {}
     for link in all_links:

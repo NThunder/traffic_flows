@@ -14,8 +14,8 @@ class TestVisualization(unittest.TestCase):
         self.links = [
             Link("A", "B", "1", 10, 15, 10),
             Link("B", "C", "1", 15, 15, 15),
-            Link("A", "C", "2", 30, 5, 30),
-            Link("B", "D", "3", 20, 20, 20),
+            Link("A", "C", "2", 30, 5),
+            Link("B", "D", "3", 20, 20),
             Link("C", "D", "4", 10, 10)
         ]
         
