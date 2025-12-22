@@ -3,8 +3,8 @@ import matplotlib.pyplot as plt
 
 sys.path.append('.')
 
-from algos.florian import compute_sf_improved as compute_sf_original
-from algos.time_arrived_florian import compute_sf_improved as compute_sf_with_time_arrived
+from algos.florian import compute_sf
+from algos.time_arrived_florian import compute_sf as compute_sf_with_time_arrived
 from utils import parse_gtfs_limited, calculate_links, calculate_headways, get_all_origins_reaching_destination
 from comparisons.bus_route_visualization import find_bus_route, create_bus_route_visualization
 
@@ -52,7 +52,7 @@ def run_comparison_with_gtfs(limit=10000):
     print(f"Количество связей (original): {len(all_links)}")
 
     print("Вычисление результатов с оригинальным алгоритмом...")
-    original_result = compute_sf_original(all_links, all_stops, destination, od_matrix)
+    original_result = compute_sf(all_links, all_stops, destination, od_matrix)
     
     print(f"\nРезультаты оригинального алгоритма Флориана:")
     print(f"Обобщенные затраты из {origin}: {original_result.strategy.labels.get(origin, 'N/A')}")
@@ -129,7 +129,7 @@ def run_extended_comparison_with_gtfs(limit=5000):
         )
         
         # Вычисляем результаты с помощью оригинального алгоритма
-        original_result = compute_sf_original(all_links, all_stops, destination, od_matrix)
+        original_result = compute_sf(all_links, all_stops, destination, od_matrix)
         
         prob_success = prob_result.strategy.labels.get(origin, 0)
         original_cost = original_result.strategy.labels.get(origin, 0)
